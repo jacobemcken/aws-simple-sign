@@ -2,11 +2,13 @@
   "Relevant AWS documentation:
    https://docs.aws.amazon.com/AmazonS3/latest/API/sig-v4-header-based-auth.html
    https://docs.aws.amazon.com/AmazonS3/latest/userguide/RESTAuthentication.html"
-  (:require [clojure.string :as str]
+  (:require [clojure.set :as set]
+            [clojure.string :as str]
             [clojure-ini.core :as ini]
             [pod.babashka.buddy.core.codecs :as codecs]
             [pod.babashka.buddy.core.hash :as hash])
-  (:import [java.time ZoneId ZoneOffset]
+  (:import [java.net URL]
+           [java.time ZoneId ZoneOffset]
            [java.time.format DateTimeFormatter]
            (javax.crypto Mac)
            (javax.crypto.spec SecretKeySpec)))
@@ -53,12 +55,12 @@
       (.withZone (ZoneId/from ZoneOffset/UTC))))
 
 (defn compute-signature
-  [{:keys [credentials encoded-policy region short-date]}]
+  [{:keys [credentials encoded-policy region service short-date]}]
   (let [date-key (-> (str "AWS4" (:aws/secret-key credentials))
                      (.getBytes)
                      (hmac-sha-256 short-date))
         date-region-key (hmac-sha-256 date-key region)
-        date-region-service-key (hmac-sha-256 date-region-key "s3")
+        date-region-service-key (hmac-sha-256 date-region-key service)
         signing-key (hmac-sha-256 date-region-service-key "aws4_request")]
     (-> (hmac-sha-256 signing-key encoded-policy)
         (codecs/bytes->hex))))
@@ -66,10 +68,18 @@
 (def algorithm
   "AWS4-HMAC-SHA256")
 
-(defn sign
+(defn ->query-str
+  [query-params]
+  (->> query-params
+       (map (fn [[k v]] [(uri-encode unreserved-chars k) (uri-encode unreserved-chars v)]))
+       (into (sorted-map)) ; sort AFTER URL encoding
+       (map (fn [[k v]] (str k "=" v)))
+       (str/join "&")))
+
+(defn signature
   "AWS specification: https://docs.aws.amazon.com/AmazonS3/latest/API/sig-v4-header-based-auth.html
    Inspired by https://gist.github.com/souenzzo/21f3e81b899ba3f04d5f8858b4ecc2e9"
-  [canonical-url credentials {:keys [ref-time region expires content-sha256 signed-headers]}]
+  [canonical-url credentials {:keys [scope timestamp region service query-params content-sha256 signed-headers]}]
   (let [encoded-url (uri-encode url-unreserved-chars canonical-url)
         signed-headers (->> signed-headers
                             (into (sorted-map)))
@@ -77,21 +87,7 @@
                          (map (fn [[k v]] (str k ":" (str/trim v) "\n")))
                          (apply str))
         signed-headers-str (str/join ";" (map key signed-headers))
-        timestamp (.format formatter (.toInstant ref-time))
-        date-str (subs timestamp 0 8)
-        scope (str date-str "/" region "/s3/aws4_request")
-        query-str (->> (conj {"X-Amz-Algorithm" algorithm
-                              "X-Amz-Credential" (str (:aws/access-key credentials) "/" scope)
-                              "X-Amz-Date" timestamp
-                              "X-Amz-SignedHeaders" signed-headers-str}
-                             (when-let [token (:aws/token credentials)]
-                               ["X-Amz-Security-Token" token])
-                             (when expires
-                               ["X-Amz-Expires" expires]))
-                       (map (fn [[k v]] [(uri-encode unreserved-chars k) (uri-encode unreserved-chars v)]))
-                       (into (sorted-map)) ; sort AFTER URL encoding
-                       (map (fn [[k v]] (str k "=" v)))
-                       (str/join "&"))
+        query-str (->query-str query-params)
         canonical-request (str "GET\n"
                                encoded-url "\n"
                                query-str "\n"
@@ -101,13 +97,59 @@
         str-to-sign (str algorithm "\n"
                          timestamp "\n"
                          scope "\n"
-                         (codecs/bytes->hex (hash/sha256 canonical-request)))
-        signature (compute-signature {:credentials    credentials
-                                      :encoded-policy str-to-sign
-                                      :region         region
-                                      :short-date     date-str})]
-    (println "# signature")
-    (println signature)
-    (str "https://s3." region ".amazonaws.com" encoded-url "?" query-str "&X-Amz-Signature=" signature)))
+                         (codecs/bytes->hex (hash/sha256 canonical-request)))]
+    (compute-signature {:credentials credentials
+                        :encoded-policy str-to-sign
+                        :region region
+                        :service service
+                        :short-date (subs timestamp 0 8)})))
 
+(defn read-env-credentials
+  []
+  (-> (str (System/getenv "HOME") "/.aws/credentials")
+      (ini/read-ini)
+      (get (or (System/getenv "AWS_PROFILE") "default"))
+      (set/rename-keys {"aws_access_key_id" :aws/access-key
+                        "aws_secret_access_key" :aws/secret-key
+                        "aws_session_token" :aws/token})))
 
+(defn presign
+  "Take an URL for a S3 object and returns a string with a presigned GET-URL
+   for that particular object.
+   Takes the following options (a map) as the last argument,
+   the map value shows the default values:
+       {:ref-time (java.util.Date.) ; timestamp incorporated into the signature
+        :expires \"3600\"           ; signature expires x seconds after ref-time
+        :region \"us-east-1\"}      ; signature locked to AWS region
+   
+   By default credentials are read from standard AWS location."
+  ([url]
+   (presign url (read-env-credentials) {}))
+  ([url opts]
+   (presign url (read-env-credentials) opts))
+  ([url credentials {:keys [ref-time region expires]
+                     :or {expires "3600" region "us-east-1" ref-time (java.util.Date.)}}]
+   (let [url-obj (URL. url)
+         host (.getHost url-obj)
+         service "s3"
+         timestamp (.format formatter (.toInstant ref-time))
+         scope (str (subs timestamp 0 8) "/" region "/" service "/aws4_request")
+         query-params (conj {"X-Amz-Algorithm" algorithm
+                             "X-Amz-Credential" (str (:aws/access-key credentials) "/" scope)
+                             "X-Amz-Date" timestamp
+                             "X-Amz-SignedHeaders" "host"}
+                            (when-let [token (:aws/token credentials)]
+                              ["X-Amz-Security-Token" token])
+                            (when expires
+                              ["X-Amz-Expires" expires]))
+         signature (signature (.getPath url-obj)
+                              credentials
+                              {:timestamp timestamp
+                               :region region
+                               :service service
+                               :scope scope
+                               :query-params query-params
+                               :signed-headers {"host" host}})]
+     (str (.getProtocol url-obj) "://" host (.getPath url-obj) "?"
+          (->query-str query-params)
+          "&X-Amz-Signature=" signature))))
