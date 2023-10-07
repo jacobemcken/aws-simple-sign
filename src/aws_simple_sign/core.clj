@@ -5,13 +5,27 @@
   (:require [clojure.set :as set]
             [clojure.string :as str]
             [clojure-ini.core :as ini]
-            [pod.babashka.buddy.core.codecs :as codecs]
             [pod.babashka.buddy.core.hash :as hash])
   (:import [java.net URL]
            [java.time ZoneId ZoneOffset]
            [java.time.format DateTimeFormatter]
            (javax.crypto Mac)
            (javax.crypto.spec SecretKeySpec)))
+
+(def digits
+  (char-array "0123456789abcdef"))
+
+(defn hex-encode
+  [bytes]
+  (->> bytes
+       (mapcat #(list (get digits (bit-shift-right (bit-and 0xF0 %) 4))
+                      (get digits (bit-and 0x0F %))))))
+
+(defn hex-encode-str
+  [bytes]
+  (->> bytes
+       (hex-encode)
+       (apply str)))
 
 ;; Clojure implementation of signature
 ;; https://gist.github.com/souenzzo/21f3e81b899ba3f04d5f8858b4ecc2e9
@@ -63,7 +77,7 @@
         date-region-service-key (hmac-sha-256 date-region-key service)
         signing-key (hmac-sha-256 date-region-service-key "aws4_request")]
     (-> (hmac-sha-256 signing-key encoded-policy)
-        (codecs/bytes->hex))))
+        hex-encode-str)))
 
 (def algorithm
   "AWS4-HMAC-SHA256")
@@ -97,7 +111,7 @@
         str-to-sign (str algorithm "\n"
                          timestamp "\n"
                          scope "\n"
-                         (codecs/bytes->hex (hash/sha256 canonical-request)))]
+                         (hex-encode-str (hash/sha256 canonical-request)))]
     (compute-signature {:credentials credentials
                         :encoded-policy str-to-sign
                         :region region
