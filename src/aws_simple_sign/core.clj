@@ -4,13 +4,19 @@
    https://docs.aws.amazon.com/AmazonS3/latest/userguide/RESTAuthentication.html"
   (:require [clojure.set :as set]
             [clojure.string :as str]
-            [clojure-ini.core :as ini]
-            [pod.babashka.buddy.core.hash :as hash])
+            [clojure-ini.core :as ini])
   (:import [java.net URL]
            [java.time ZoneId ZoneOffset]
            [java.time.format DateTimeFormatter]
+           [java.security MessageDigest]
            (javax.crypto Mac)
            (javax.crypto.spec SecretKeySpec)))
+
+(defn hash-sha256
+  [input]
+  (let [hash (MessageDigest/getInstance "SHA-256")]
+    (.update hash (.getBytes input))
+    (.digest hash)))
 
 (def digits
   (char-array "0123456789abcdef"))
@@ -111,7 +117,7 @@
         str-to-sign (str algorithm "\n"
                          timestamp "\n"
                          scope "\n"
-                         (hex-encode-str (hash/sha256 canonical-request)))]
+                         (hex-encode-str (hash-sha256 canonical-request)))]
     (compute-signature {:credentials credentials
                         :encoded-policy str-to-sign
                         :region region
