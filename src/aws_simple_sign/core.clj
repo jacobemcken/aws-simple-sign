@@ -125,13 +125,15 @@
                         :short-date (subs timestamp 0 8)})))
 
 (defn read-env-credentials
-  []
-  (-> (str (System/getenv "HOME") "/.aws/credentials")
-      (ini/read-ini)
-      (get (or (System/getenv "AWS_PROFILE") "default"))
-      (set/rename-keys {"aws_access_key_id" :aws/access-key
-                        "aws_secret_access_key" :aws/secret-key
-                        "aws_session_token" :aws/token})))
+  ([]
+   (read-env-credentials (or (System/getenv "AWS_PROFILE") "default")))
+  ([profile-name]
+   (-> (str (System/getenv "HOME") "/.aws/credentials")
+       (ini/read-ini)
+       (get profile-name)
+       (set/rename-keys {"aws_access_key_id" :aws/access-key
+                         "aws_secret_access_key" :aws/secret-key
+                         "aws_session_token" :aws/token}))))
 
 (defn presign
   "Take an URL for a S3 object and returns a string with a presigned GET-URL
