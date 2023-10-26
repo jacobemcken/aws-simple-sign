@@ -102,6 +102,7 @@
   [canonical-url credentials {:keys [scope timestamp region service query-params content-sha256 signed-headers]}]
   (let [encoded-url (uri-encode url-unreserved-chars canonical-url)
         signed-headers (->> signed-headers
+                            (map (fn [[k v]] [(str/lower-case k) v]))
                             (into (sorted-map)))
         headers-str (->> signed-headers
                          (map (fn [[k v]] (str k ":" (str/trim v) "\n")))
