@@ -75,15 +75,15 @@
       (.withZone (ZoneId/from ZoneOffset/UTC))))
 
 (defn compute-signature
-  [{:keys [credentials encoded-policy region service short-date]}]
-  (let [date-key (-> (str "AWS4" (:aws/secret-key credentials))
-                     (.getBytes)
-                     (hmac-sha-256 short-date))
-        date-region-key (hmac-sha-256 date-key region)
-        date-region-service-key (hmac-sha-256 date-region-key service)
-        signing-key (hmac-sha-256 date-region-service-key "aws4_request")]
-    (-> (hmac-sha-256 signing-key encoded-policy)
-        hex-encode-str)))
+  [{:keys [credentials str-to-sign region service short-date]}]
+  (-> (str "AWS4" (:aws/secret-key credentials))
+      (.getBytes)
+      (hmac-sha-256 short-date)
+      (hmac-sha-256 region)
+      (hmac-sha-256 service)
+      (hmac-sha-256 "aws4_request")
+      (hmac-sha-256 str-to-sign)
+      hex-encode-str))
 
 (def algorithm
   "AWS4-HMAC-SHA256")
@@ -119,7 +119,7 @@
                          scope "\n"
                          (hex-encode-str (hash-sha256 canonical-request)))]
     (compute-signature {:credentials credentials
-                        :encoded-policy str-to-sign
+                        :str-to-sign str-to-sign
                         :region region
                         :service service
                         :short-date (subs timestamp 0 8)})))
