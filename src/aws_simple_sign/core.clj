@@ -136,6 +136,39 @@
                          "aws_secret_access_key" :aws/secret-key
                          "aws_session_token" :aws/token}))))
 
+(defn hashed-payload
+  [payload]
+  (when (or (nil? payload) (string? payload))
+    (hex-encode-str (hash-sha256 (or payload "")))))
+
+(defn sign-request
+  ([ring-request]
+   (sign-request ring-request (read-env-credentials) {}))
+  ([ring-request credentials {:keys [ref-time region]
+                              :or {region "us-east-1" ref-time (java.util.Date.)}}]
+   (let [timestamp (.format formatter (.toInstant ref-time))
+         service "execute-api"
+         content-sha256 (hashed-payload (:body ring-request))
+         signed-headers (-> (:headers ring-request)
+                            (assoc "x-amz-content-sha256" content-sha256
+                                   "x-amz-date" timestamp
+                                   "x-amz-security-token" (:aws/token credentials)))
+         scope (str (subs timestamp 0 8) "/" region "/" service "/aws4_request")
+         signature-str (signature (:uri ring-request) credentials
+                                  {:scope scope
+                                   :timestamp timestamp
+                                   :region region
+                                   :service service
+                                   :signed-headers signed-headers
+                                   :query-params (:query-params ring-request)
+                                   :content-sha256 content-sha256})]
+     (-> ring-request
+         (assoc :headers signed-headers) ; overwrite headers to include necessary x-amz-* ones
+         (update :headers assoc
+                 "Authorization" (str algorithm "Credential=" (:aws/access-key credentials) "/" scope ", "
+                                      "SignedHeaders=" (str/join ";" (map key signed-headers)) ", "
+                                      "Signature=" signature-str))))))
+
 (defn presign
   "Take an URL for a S3 object and returns a string with a presigned GET-URL
    for that particular object.
