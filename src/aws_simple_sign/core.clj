@@ -144,24 +144,26 @@
 (defn sign-request
   ([ring-request]
    (sign-request ring-request (read-env-credentials) {}))
-  ([ring-request credentials {:keys [ref-time region]
-                              :or {region "us-east-1" ref-time (java.util.Date.)}}]
+  ([{:keys [body headers uri query-params method] :as ring-request}
+    credentials
+    {:keys [ref-time region]
+     :or {region "us-east-1" ref-time (java.util.Date.)}}]
    (let [timestamp (.format formatter (.toInstant ref-time))
          service "execute-api"
-         content-sha256 (hashed-payload (:body ring-request))
-         signed-headers (-> (:headers ring-request)
+         content-sha256 (hashed-payload body)
+         signed-headers (-> headers
                             (assoc "x-amz-content-sha256" content-sha256
                                    "x-amz-date" timestamp
                                    "x-amz-security-token" (:aws/token credentials)))
          scope (str (subs timestamp 0 8) "/" region "/" service "/aws4_request")
-         signature-str (signature (:uri ring-request) credentials
+         signature-str (signature uri credentials
                                   {:scope scope
                                    :timestamp timestamp
                                    :region region
                                    :service service
-                                   :method (-> (:method ring-request) name str/upper-case)
+                                   :method (-> method name str/upper-case)
                                    :signed-headers signed-headers
-                                   :query-params (:query-params ring-request)
+                                   :query-params query-params
                                    :content-sha256 content-sha256})]
      (-> ring-request
          (assoc :headers signed-headers) ; overwrite headers to include necessary x-amz-* ones
