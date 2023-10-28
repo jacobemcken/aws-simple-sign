@@ -105,7 +105,7 @@
                             (map (fn [[k v]] [(str/lower-case k) v]))
                             (into (sorted-map)))
         headers-str (->> signed-headers
-                         (map (fn [[k v]] (str k ":" (str/trim v) "\n")))
+                         (map (fn [[k v]] (str k ":" (str/trim (or v "")) "\n")))
                          (apply str))
         signed-headers-str (str/join ";" (map key signed-headers))
         query-str (->query-str query-params)
