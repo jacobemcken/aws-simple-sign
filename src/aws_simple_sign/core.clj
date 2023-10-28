@@ -168,7 +168,7 @@
      (-> ring-request
          (assoc :headers signed-headers) ; overwrite headers to include necessary x-amz-* ones
          (update :headers assoc
-                 "Authorization" (str algorithm "Credential=" (:aws/access-key credentials) "/" scope ", "
+                 "Authorization" (str algorithm " Credential=" (:aws/access-key credentials) "/" scope ", "
                                       "SignedHeaders=" (str/join ";" (map key signed-headers)) ", "
                                       "Signature=" signature-str))))))
 
