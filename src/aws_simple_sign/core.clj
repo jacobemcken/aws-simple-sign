@@ -99,7 +99,7 @@
 (defn signature
   "AWS specification: https://docs.aws.amazon.com/AmazonS3/latest/API/sig-v4-header-based-auth.html
    Inspired by https://gist.github.com/souenzzo/21f3e81b899ba3f04d5f8858b4ecc2e9"
-  [canonical-url credentials {:keys [scope timestamp region service query-params content-sha256 signed-headers]}]
+  [canonical-url credentials {:keys [scope method timestamp region service query-params content-sha256 signed-headers]}]
   (let [encoded-url (uri-encode url-unreserved-chars canonical-url)
         signed-headers (->> signed-headers
                             (map (fn [[k v]] [(str/lower-case k) v]))
@@ -109,7 +109,7 @@
                          (apply str))
         signed-headers-str (str/join ";" (map key signed-headers))
         query-str (->query-str query-params)
-        canonical-request (str "GET\n"
+        canonical-request (str (or method "GET") "\n"
                                encoded-url "\n"
                                query-str "\n"
                                headers-str "\n"
@@ -159,6 +159,7 @@
                                    :timestamp timestamp
                                    :region region
                                    :service service
+                                   :method (-> (:method ring-request) name str/upper-case)
                                    :signed-headers signed-headers
                                    :query-params (:query-params ring-request)
                                    :content-sha256 content-sha256})]
