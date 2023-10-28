@@ -141,32 +141,44 @@
   (when (or (nil? payload) (string? payload))
     (hex-encode-str (hash-sha256 (or payload "")))))
 
+(defn get-query-params
+  [params-str]
+  (when (seq params-str)
+    (->> (str/split params-str #"&")
+         (map (fn [param]
+                (let [[k v] (str/split param #"=" 2)]
+                  ;; ensure vector with exactly 2 elements (key/value) for `into` to work
+                  [k v])))
+         (into (sorted-map)))))
+
 (defn sign-request
-  ([ring-request]
-   (sign-request ring-request (read-env-credentials) {}))
-  ([{:keys [body headers uri query-params method] :as ring-request}
+  ([request]
+   (sign-request request (read-env-credentials) {}))
+  ([{:keys [body headers method url] :as request}
     credentials
     {:keys [ref-time region]
      :or {region "us-east-1" ref-time (java.util.Date.)}}]
    (let [timestamp (.format formatter (.toInstant ref-time))
          service "execute-api"
+         url-obj (URL. url)
          content-sha256 (hashed-payload body)
          signed-headers (-> headers
-                            (assoc "x-amz-content-sha256" content-sha256
+                            (assoc "Host" (.getHost url-obj)
+                                   "x-amz-content-sha256" content-sha256
                                    "x-amz-date" timestamp
                                    "x-amz-security-token" (:aws/token credentials)))
          scope (str (subs timestamp 0 8) "/" region "/" service "/aws4_request")
-         signature-str (signature uri credentials
+         signature-str (signature (.getPath url-obj) credentials
                                   {:scope scope
                                    :timestamp timestamp
                                    :region region
                                    :service service
                                    :method (-> method name str/upper-case)
                                    :signed-headers signed-headers
-                                   :query-params query-params
+                                   :query-params (get-query-params (.getQuery url-obj))
                                    :content-sha256 content-sha256})]
-     (-> ring-request
-         (assoc :headers signed-headers) ; overwrite headers to include necessary x-amz-* ones
+     (-> request
+         (assoc :headers (dissoc signed-headers "Host")) ; overwrite headers to include necessary x-amz-* ones
          (update :headers assoc
                  "Authorization" (str algorithm " Credential=" (:aws/access-key credentials) "/" scope ", "
                                       "SignedHeaders=" (str/join ";" (map key signed-headers)) ", "
