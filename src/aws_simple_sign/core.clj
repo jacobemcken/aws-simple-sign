@@ -152,8 +152,8 @@
          (into (sorted-map)))))
 
 (defn sign-request
-  ([request]
-   (sign-request request (read-env-credentials) {}))
+  ([request opts]
+   (sign-request request (read-env-credentials) opts))
   ([{:keys [body headers method url] :as request}
     credentials
     {:keys [ref-time region]
