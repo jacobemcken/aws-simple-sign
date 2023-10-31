@@ -1,5 +1,5 @@
 (ns aws-simple-sign.core-test
-  (:require [clojure.test :refer [deftest is]]
+  (:require [clojure.test :refer [deftest is testing]]
             [aws-simple-sign.core :as sut]))
 
 (def credentials
@@ -20,3 +20,10 @@
                                           "range" "bytes=0-9"
                                           "x-amz-content-sha256" "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
                                           "x-amz-date" "20130524T000000Z"}}))))
+
+(deftest hashing-payloads
+  (testing "hashing an empty payload"
+    (is (= "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+           (sut/hashed-payload "")))
+    (is (= "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+           (sut/hashed-payload nil)))))
