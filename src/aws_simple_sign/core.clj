@@ -156,10 +156,10 @@
    (sign-request request (read-env-credentials) opts))
   ([{:keys [body headers method url] :as request}
     credentials
-    {:keys [ref-time region]
-     :or {region "us-east-1" ref-time (java.util.Date.)}}]
+    {:keys [ref-time region service]
+     :or {region "us-east-1" service "execute-api" ref-time (java.util.Date.)}}]
    (let [timestamp (.format formatter (.toInstant ref-time))
-         service "execute-api"
+         service service
          url-obj (URL. url)
          content-sha256 (hashed-payload body)
          signed-headers (-> headers
