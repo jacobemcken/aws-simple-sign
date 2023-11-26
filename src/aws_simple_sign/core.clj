@@ -125,16 +125,32 @@
                         :service service
                         :short-date (subs timestamp 0 8)})))
 
+(defn guarantee-credientials
+  [{:aws/keys [access-key secret-key token] :as credentials}]
+  (if (and access-key secret-key token)
+    credentials
+    (throw (ex-info "AWS credentials missing or incomplete" {}))))
+
 (defn read-env-credentials
   ([]
    (read-env-credentials (or (System/getenv "AWS_PROFILE") "default")))
   ([profile-name]
-   (-> (str (System/getenv "HOME") "/.aws/credentials")
+   (-> (or (System/getenv "AWS_SHARED_CREDENTIALS_FILE")
+           (str (System/getenv "HOME") "/.aws/credentials"))
        (ini/read-ini)
        (get profile-name)
+       (or {})
        (set/rename-keys {"aws_access_key_id" :aws/access-key
                          "aws_secret_access_key" :aws/secret-key
-                         "aws_session_token" :aws/token}))))
+                         "aws_session_token" :aws/token})
+       (conj (when-let [env-access-key (System/getenv "AWS_ACCESS_KEY_ID")]
+               [:aws/access-key env-access-key]))
+       (conj (when-let [env-secret-key (System/getenv "AWS_SECRET_ACCESS_KEY")]
+               [:aws/secret-key env-secret-key]))
+       (conj (when-let [env-token (System/getenv "AWS_SESSION_TOKEN")]
+               [:aws/token env-token]))
+       (guarantee-credientials))))
+
 
 (defn hashed-payload
   [payload]
