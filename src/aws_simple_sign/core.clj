@@ -2,7 +2,7 @@
   "Relevant AWS documentation:
    https://docs.aws.amazon.com/AmazonS3/latest/API/sig-v4-header-based-auth.html
    https://docs.aws.amazon.com/AmazonS3/latest/userguide/RESTAuthentication.html"
-  (:require [clojure.set :as set]
+  (:require [clojure.java.io :as io]
             [clojure.string :as str]
             [clojure-ini.core :as ini])
   (:import [java.net URL]
@@ -129,27 +129,40 @@
   [{:aws/keys [access-key secret-key token] :as credentials}]
   (if (and access-key secret-key token)
     credentials
-    (throw (ex-info "AWS credentials missing or incomplete" {}))))
+    (throw (ex-info "AWS credentials missing or incomplete - check environment variables." {}))))
+
+(defn as-existing-file
+  "Takes a string with the path to the file
+   and returns a File object if the file exists otherwise nil."
+  [file-path]
+  (let [f (io/file file-path)]
+    (when (.exists f)
+      f)))
+
+(defn read-credentials-file
+  [file-path profile-name]
+  (when-let [f (as-existing-file file-path)]
+    (-> (ini/read-ini f)
+        (get profile-name)
+        (or {}))))
 
 (defn read-env-credentials
   ([]
    (read-env-credentials (or (System/getenv "AWS_PROFILE") "default")))
   ([profile-name]
-   (-> (or (System/getenv "AWS_SHARED_CREDENTIALS_FILE")
-           (str (System/getenv "HOME") "/.aws/credentials"))
-       (ini/read-ini)
-       (get profile-name)
-       (or {})
-       (set/rename-keys {"aws_access_key_id" :aws/access-key
-                         "aws_secret_access_key" :aws/secret-key
-                         "aws_session_token" :aws/token})
-       (conj (when-let [env-access-key (System/getenv "AWS_ACCESS_KEY_ID")]
-               [:aws/access-key env-access-key]))
-       (conj (when-let [env-secret-key (System/getenv "AWS_SECRET_ACCESS_KEY")]
-               [:aws/secret-key env-secret-key]))
-       (conj (when-let [env-token (System/getenv "AWS_SESSION_TOKEN")]
-               [:aws/token env-token]))
-       (guarantee-credientials))))
+   ;; Only try to read creds file if needed (and only once) by using "delay"
+   (let [file-cred (delay (read-credentials-file
+                           (or (System/getenv "AWS_SHARED_CREDENTIALS_FILE")
+                               (str (System/getenv "HOME") "/.aws/credentials"))
+                           profile-name))]
+     (-> {:aws/access-key (or (System/getenv "AWS_ACCESS_KEY_ID")
+                              (get @file-cred "aws_access_key_id"))
+          :aws/secret-key (or (System/getenv "AWS_SECRET_ACCESS_KEY")
+                              (get @file-cred "aws_secret_access_key"))
+          :aws/token (or (System/getenv "AWS_SESSION_TOKEN")
+                         (get @file-cred "aws_session_token"))}
+         (guarantee-credientials)))))
+
 
 
 (defn hashed-payload
