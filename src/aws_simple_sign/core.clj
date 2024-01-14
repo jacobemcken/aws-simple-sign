@@ -9,11 +9,12 @@
            [java.time ZoneId ZoneOffset]
            [java.time.format DateTimeFormatter]
            [java.security MessageDigest]
+           (java.util Date)
            (javax.crypto Mac)
            (javax.crypto.spec SecretKeySpec)))
 
 (defn hash-sha256
-  [input]
+  [^String input]
   (let [hash (MessageDigest/getInstance "SHA-256")]
     (.update hash (.getBytes input))
     (.digest hash)))
@@ -37,7 +38,8 @@
 ;; https://gist.github.com/souenzzo/21f3e81b899ba3f04d5f8858b4ecc2e9
 ;; https://github.com/joseferben/clj-aws-sign/ (ring middelware)
 
-(defn hmac-sha-256 [key data]
+(defn hmac-sha-256
+  [key ^String data]
   (let [algo "HmacSHA256"
         mac (Mac/getInstance algo)]
     (.init mac (SecretKeySpec. key algo))
@@ -70,7 +72,7 @@
        (map (partial encode skip-chars))
        (apply str)))
 
-(def formatter
+(def ^DateTimeFormatter formatter
   (-> (DateTimeFormatter/ofPattern "yyyyMMdd'T'HHmmss'Z'")
       (.withZone (ZoneId/from ZoneOffset/UTC))))
 
@@ -186,8 +188,8 @@
   ([{:keys [body headers method url] :as request}
     credentials
     {:keys [ref-time region service]
-     :or {region "us-east-1" service "execute-api" ref-time (java.util.Date.)}}]
-   (let [timestamp (.format formatter (.toInstant ref-time))
+     :or {region "us-east-1" service "execute-api" ref-time (Date.)}}]
+   (let [timestamp (.format formatter (.toInstant ^Date ref-time))
          service service
          url-obj (URL. url)
          content-sha256 (hashed-payload body)
@@ -228,11 +230,11 @@
   ([url opts]
    (presign url (read-env-credentials) opts))
   ([url credentials {:keys [ref-time region expires]
-                     :or {expires "3600" region "us-east-1" ref-time (java.util.Date.)}}]
+                     :or {expires "3600" region "us-east-1" ref-time (Date.)}}]
    (let [url-obj (URL. url)
          host (.getHost url-obj)
          service "s3"
-         timestamp (.format formatter (.toInstant ref-time))
+         timestamp (.format formatter (.toInstant ^Date ref-time))
          scope (str (subs timestamp 0 8) "/" region "/" service "/aws4_request")
          query-params (conj {"X-Amz-Algorithm" algorithm
                              "X-Amz-Credential" (str (:aws/access-key credentials) "/" scope)
