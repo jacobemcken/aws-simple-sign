@@ -156,13 +156,21 @@
    (let [file-cred (delay (read-credentials-file
                            (or (System/getenv "AWS_SHARED_CREDENTIALS_FILE")
                                (str (System/getenv "HOME") "/.aws/credentials"))
-                           profile-name))]
+                           profile-name))
+         file-conf (delay (read-credentials-file
+                           (or (System/getenv "AWS_CONFIG_FILE")
+                               (str (System/getenv "HOME") "/.aws/config"))
+                           (str "profile " profile-name)))]
      (-> {:aws/access-key (or (System/getenv "AWS_ACCESS_KEY_ID")
                               (get @file-cred "aws_access_key_id"))
           :aws/secret-key (or (System/getenv "AWS_SECRET_ACCESS_KEY")
                               (get @file-cred "aws_secret_access_key"))
           :aws/token (or (System/getenv "AWS_SESSION_TOKEN")
-                         (get @file-cred "aws_session_token"))}
+                         (get @file-cred "aws_session_token"))
+          :aws/region (or (System/getenv "AWS_REGION")
+                          (System/getenv "AWS_DEFAULT_REGION")
+                          (get @file-conf "region")
+                          "us-east-1")}
          (guarantee-credientials)))))
 
 
@@ -188,7 +196,9 @@
   ([{:keys [body headers method url] :as request}
     credentials
     {:keys [ref-time region service]
-     :or {region "us-east-1" service "execute-api" ref-time (Date.)}}]
+     :or {region (:aws/region credentials)
+          service "execute-api"
+          ref-time (Date.)}}]
    (let [timestamp (.format formatter (.toInstant ^Date ref-time))
          service service
          url-obj (URL. url)
@@ -230,7 +240,9 @@
   ([url opts]
    (presign url (read-env-credentials) opts))
   ([url credentials {:keys [ref-time region expires]
-                     :or {expires "3600" region "us-east-1" ref-time (Date.)}}]
+                     :or {expires "3600"
+                          region (:aws/region credentials)
+                          ref-time (Date.)}}]
    (let [url-obj (URL. url)
          host (.getHost url-obj)
          service "s3"
