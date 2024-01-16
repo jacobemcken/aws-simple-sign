@@ -152,14 +152,14 @@
   ([]
    (read-env-credentials (or (System/getenv "AWS_PROFILE") "default")))
   ([profile-name]
-   ;; Only try to read creds file if needed (and only once) by using "delay"
+   ;; Only try to read AWS files if needed (and only once) by using "delay"
    (let [file-cred (delay (read-credentials-file
                            (or (System/getenv "AWS_SHARED_CREDENTIALS_FILE")
-                               (str (System/getenv "HOME") "/.aws/credentials"))
+                               (str (System/getProperty "user.home") "/.aws/credentials"))
                            profile-name))
          file-conf (delay (read-credentials-file
                            (or (System/getenv "AWS_CONFIG_FILE")
-                               (str (System/getenv "HOME") "/.aws/config"))
+                               (str (System/getProperty "user.home") "/.aws/config"))
                            (str "profile " profile-name)))]
      (-> {:aws/access-key (or (System/getenv "AWS_ACCESS_KEY_ID")
                               (get @file-cred "aws_access_key_id"))
@@ -172,8 +172,6 @@
                           (get @file-conf "region")
                           "us-east-1")}
          (guarantee-credientials)))))
-
-
 
 (defn hashed-payload
   [payload]
