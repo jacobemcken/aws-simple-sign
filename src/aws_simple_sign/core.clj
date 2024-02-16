@@ -170,7 +170,10 @@
           :aws/region (or (System/getenv "AWS_REGION")
                           (System/getenv "AWS_DEFAULT_REGION")
                           (get @file-conf "region")
-                          "us-east-1")}
+                          "us-east-1")
+          :aws/endpoint-url (or (System/getenv "AWS_ENDPOINT_URL_S3")
+                                (System/getenv "AWS_ENDPOINT_URL")
+                                (get @file-conf "endpoint_url"))}
          (guarantee-credientials)))))
 
 (defn hashed-payload
@@ -242,7 +245,9 @@
                           region (:aws/region credentials)
                           ref-time (Date.)}}]
    (let [url-obj (URL. url)
-         host (.getHost url-obj)
+         port (.getPort url-obj)
+         host (cond-> (.getHost url-obj)
+                (pos? port) (str ":" port))
          service "s3"
          timestamp (.format formatter (.toInstant ^Date ref-time))
          scope (str (subs timestamp 0 8) "/" region "/" service "/aws4_request")
@@ -265,3 +270,23 @@
      (str (.getProtocol url-obj) "://" host (.getPath url-obj) "?"
           (->query-str query-params)
           "&X-Amz-Signature=" signature))))
+
+(defn generate-presigned-url
+  "Takes bucket name, object key and a map with options.
+   The option `:path-style true` forces the use of the 'old way' of URL's."
+  ([bucket object-key opts]
+   (generate-presigned-url bucket object-key (read-env-credentials) opts))
+  ([bucket object-key credentials
+    {:keys [region endpoint]
+     :or {region (:aws/region credentials)
+          endpoint (:aws/endpoint credentials)} :as opts}]
+   (let [endpoint' (or (when endpoint
+                         (if (str/ends-with? endpoint "/")
+                           endpoint
+                           (str endpoint "/")))
+                       (str "https://s3." region ".amazonaws.com/"))]
+     (-> (if (:path-style opts)
+           (str endpoint' bucket "/")
+           (str/replace endpoint' #"://" (str "://" bucket ".")))
+         (str object-key)
+         (presign credentials opts)))))
