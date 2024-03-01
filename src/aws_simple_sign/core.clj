@@ -128,8 +128,8 @@
                         :short-date (subs timestamp 0 8)})))
 
 (defn guarantee-credientials
-  [{:aws/keys [access-key secret-key token] :as credentials}]
-  (if (and access-key secret-key token)
+  [{:aws/keys [access-key secret-key] :as credentials}]
+  (if (and access-key secret-key)
     credentials
     (throw (ex-info "AWS credentials missing or incomplete - check environment variables." {}))))
 
