@@ -1,6 +1,6 @@
 # aws-simple-sign
 
-A Clojure library to pre-signed URL's (S3) and sign HTTP requests for AWS.
+A Clojure library to pre-signed URLs (S3) and sign HTTP requests for AWS.
 The library only depends on Java core (no external Java dependencies),
 making it fairly light.
 
@@ -23,6 +23,23 @@ To generate a pre-signed URL for a S3 object:
 (aws/presign "https://s3.us-west-1.amazonaws.com/somebucket/someobject.txt"
              {:region "us-west-1"})
 ```
+
+It is possible to choose whether to use "virtual hosted-style" URLs (the default) or "path-style URLs".
+Path-style URLs are being deprecated (see links below),
+but have the advantage of supporting bucket names which include dots (`.`) in the name,
+which will otherwise cause URLs that cannot have their SSL certificate verified.
+
+```clojure
+(aws/generate-presigned-url "somebucket" "someobject.txt" {})
+"https://somebucket.s3.eu-west-1.amazonaws.com/someobject.txt?X-Amz-Security-Token=FwoG..."
+
+(aws/generate-presigned-url "somebucket" "someobject.txt" {:path-style true})
+"https://s3.eu-west-1.amazonaws.com/somebucket/someobject.txt?X-Amz-Security-Token=FwoG..."
+```
+
+Official announcements:
+- 08 MAY 2019 https://aws.amazon.com/blogs/aws/amazon-s3-path-deprecation-plan-the-rest-of-the-story/
+- 22 SEP 2020 https://aws.amazon.com/blogs/storage/update-to-amazon-s3-path-deprecation-plan/
 
 
 ### Signed HTTP requests
