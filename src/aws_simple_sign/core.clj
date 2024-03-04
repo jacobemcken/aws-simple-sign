@@ -279,7 +279,7 @@
   ([bucket object-key credentials
     {:keys [region endpoint]
      :or {region (:aws/region credentials)
-          endpoint (:aws/endpoint credentials)} :as opts}]
+          endpoint (:aws/endpoint-url credentials)} :as opts}]
    (let [endpoint' (or (when endpoint
                          (if (str/ends-with? endpoint "/")
                            endpoint
