@@ -70,15 +70,16 @@ honoring how [AWS specific environment variables][1] usually overwrite values.
 Alternatively, provide credentials manually using the map structure:
 
 ```clojure
-{:aws/access-key "AKIAIOSFODNN7EXAMPLE"
- :aws/secret-key "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+{:aws/access-key-id "AKIAIOSFODNN7EXAMPLE"
+ :aws/secret-access-key "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
  :aws/token "aoGYXIvYXnzEOf/////////fEaDPDf......EXAMPLETOKEN="}
 ```
 
 All three values (access key, secret and session token) must be available,
 if not an exception with the message `AWS credentials missing or incomplete` is thrown.
 
-Check the function `read-env-credentials` to get some insight into
-how credentials are identified.
+The library is using the same "Credentials Provider" implementation
+as [`aws-api` from Cognitect][2], excluding ECS (aka. "Container Provider").
 
 [1]: https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-envvars.html
+[2]: https://github.com/cognitect-labs/aws-api

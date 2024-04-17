@@ -3,8 +3,8 @@
             [aws-simple-sign.core :as sut]))
 
 (def credentials
-  {:aws/access-key "AKIAIOSFODNN7EXAMPLE"
-   :aws/secret-key "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"})
+  {:aws/access-key-id "AKIAIOSFODNN7EXAMPLE"
+   :aws/secret-access-key "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"})
 
 ;; Testing example from: https://docs.aws.amazon.com/AmazonS3/latest/API/sig-v4-header-based-auth.html
 (deftest sign

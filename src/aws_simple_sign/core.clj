@@ -4,7 +4,8 @@
    https://docs.aws.amazon.com/AmazonS3/latest/userguide/RESTAuthentication.html"
   (:require [clojure.java.io :as io]
             [clojure.string :as str]
-            [aws-simple-sign.config :as config])
+            [aws-simple-sign.config :as config]
+            [aws-simple-sign.providers :as providers])
   (:import [java.net URL]
            [java.time ZoneId ZoneOffset]
            [java.time.format DateTimeFormatter]
@@ -78,7 +79,7 @@
 
 (defn compute-signature
   [{:keys [credentials str-to-sign region service short-date]}]
-  (-> (str "AWS4" (:aws/secret-key credentials))
+  (-> (str "AWS4" (:aws/secret-access-key credentials))
       (.getBytes)
       (hmac-sha-256 short-date)
       (hmac-sha-256 region)
@@ -128,8 +129,8 @@
                         :short-date (subs timestamp 0 8)})))
 
 (defn guarantee-credientials
-  [{:aws/keys [access-key secret-key] :as credentials}]
-  (if (and access-key secret-key)
+  [{:aws/keys [access-key-id secret-access-key] :as credentials}]
+  (if (and access-key-id secret-access-key)
     credentials
     (throw (ex-info "AWS credentials missing or incomplete - check environment variables." {}))))
 
@@ -148,32 +149,26 @@
         (get profile-name)
         (or {}))))
 
+(def default-credentials-provider
+  (delay (providers/default-credentials-provider)))
+
 (defn read-env-credentials
   ([]
    (read-env-credentials (or (System/getenv "AWS_PROFILE") "default")))
   ([profile-name]
    ;; Only try to read AWS files if needed (and only once) by using "delay"
-   (let [file-cred (delay (read-credentials-file
-                           (or (System/getenv "AWS_SHARED_CREDENTIALS_FILE")
-                               (str (System/getProperty "user.home") "/.aws/credentials"))
-                           profile-name))
-         file-conf (delay (read-credentials-file
+   (let [file-conf (delay (read-credentials-file
                            (or (System/getenv "AWS_CONFIG_FILE")
                                (str (System/getProperty "user.home") "/.aws/config"))
                            profile-name))]
-     (-> {:aws/access-key (or (System/getenv "AWS_ACCESS_KEY_ID")
-                              (get @file-cred "aws_access_key_id"))
-          :aws/secret-key (or (System/getenv "AWS_SECRET_ACCESS_KEY")
-                              (get @file-cred "aws_secret_access_key"))
-          :aws/token (or (System/getenv "AWS_SESSION_TOKEN")
-                         (get @file-cred "aws_session_token"))
-          :aws/region (or (System/getenv "AWS_REGION")
-                          (System/getenv "AWS_DEFAULT_REGION")
-                          (get @file-conf "region")
-                          "us-east-1")
-          :aws/endpoint-url (or (System/getenv "AWS_ENDPOINT_URL_S3")
-                                (System/getenv "AWS_ENDPOINT_URL")
-                                (get @file-conf "endpoint_url"))}
+     (-> (providers/fetch @default-credentials-provider)
+         (assoc :aws/region (or (System/getenv "AWS_REGION")
+                                (System/getenv "AWS_DEFAULT_REGION")
+                                (get @file-conf "region")
+                                "us-east-1")
+                :aws/endpoint-url (or (System/getenv "AWS_ENDPOINT_URL_S3")
+                                      (System/getenv "AWS_ENDPOINT_URL")
+                                      (get @file-conf "endpoint_url")))
          (guarantee-credientials)))))
 
 (defn hashed-payload
@@ -208,7 +203,7 @@
                             (assoc "Host" (.getHost url-obj)
                                    "x-amz-content-sha256" content-sha256
                                    "x-amz-date" timestamp
-                                   "x-amz-security-token" (:aws/token credentials)))
+                                   "x-amz-security-token" (:aws/session-token credentials)))
          scope (str (subs timestamp 0 8) "/" region "/" service "/aws4_request")
          signature-str (signature (.getPath url-obj) credentials
                                   {:scope scope
@@ -222,7 +217,7 @@
      (-> request
          (assoc :headers (dissoc signed-headers "Host")) ; overwrite headers to include necessary x-amz-* ones
          (update :headers assoc
-                 "Authorization" (str algorithm " Credential=" (:aws/access-key credentials) "/" scope ", "
+                 "Authorization" (str algorithm " Credential=" (:aws/access-key-id credentials) "/" scope ", "
                                       "SignedHeaders=" (str/join ";" (map key signed-headers)) ", "
                                       "Signature=" signature-str))))))
 
@@ -252,11 +247,11 @@
          timestamp (.format formatter (.toInstant ^Date ref-time))
          scope (str (subs timestamp 0 8) "/" region "/" service "/aws4_request")
          query-params (conj {"X-Amz-Algorithm" algorithm
-                             "X-Amz-Credential" (str (:aws/access-key credentials) "/" scope)
+                             "X-Amz-Credential" (str (:aws/access-key-id credentials) "/" scope)
                              "X-Amz-Date" timestamp
                              "X-Amz-SignedHeaders" "host"}
-                            (when-let [token (:aws/token credentials)]
-                              ["X-Amz-Security-Token" token])
+                            (when-let [session-token (:aws/session-token credentials)]
+                              ["X-Amz-Security-Token" session-token])
                             (when expires
                               ["X-Amz-Expires" expires]))
          signature (signature (.getPath url-obj)
