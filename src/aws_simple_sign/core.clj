@@ -4,7 +4,7 @@
    https://docs.aws.amazon.com/AmazonS3/latest/userguide/RESTAuthentication.html"
   (:require [clojure.java.io :as io]
             [clojure.string :as str]
-            [clojure-ini.core :as ini])
+            [aws-simple-sign.config :as config])
   (:import [java.net URL]
            [java.time ZoneId ZoneOffset]
            [java.time.format DateTimeFormatter]
@@ -144,7 +144,7 @@
 (defn read-credentials-file
   [file-path profile-name]
   (when-let [f (as-existing-file file-path)]
-    (-> (ini/read-ini f)
+    (-> (config/parse f)
         (get profile-name)
         (or {}))))
 
@@ -160,7 +160,7 @@
          file-conf (delay (read-credentials-file
                            (or (System/getenv "AWS_CONFIG_FILE")
                                (str (System/getProperty "user.home") "/.aws/config"))
-                           (str "profile " profile-name)))]
+                           profile-name))]
      (-> {:aws/access-key (or (System/getenv "AWS_ACCESS_KEY_ID")
                               (get @file-cred "aws_access_key_id"))
           :aws/secret-key (or (System/getenv "AWS_SECRET_ACCESS_KEY")

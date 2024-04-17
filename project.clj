@@ -3,6 +3,5 @@
   :url "https://github.com/jacobemcken/aws-simple-sign"
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
-  :dependencies [[org.clojure/clojure "1.11.1"]
-                 [clojure-ini/clojure-ini "0.0.2"]]
+  :dependencies [[org.clojure/clojure "1.11.1"]]
   :profiles {:dev {:dependencies [[org.babashka/http-client "0.3.11"]]}})
