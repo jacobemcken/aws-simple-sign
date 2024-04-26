@@ -9,8 +9,8 @@
 ;; Testing example from: https://docs.aws.amazon.com/AmazonS3/latest/API/sig-v4-header-based-auth.html
 (deftest sign
   (is (= "f0e8bdb87c964420e857bd35b5d6ed310bd44f0170aba48dd91039c6036bdb41"
-         (sut/signature "/test.txt"
-                        credentials
+         (sut/signature credentials
+                        "/test.txt"
                         {:timestamp "20130524T000000Z"
                          :region "us-east-1"
                          :service "s3"

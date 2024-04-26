@@ -2,10 +2,7 @@
   "Relevant AWS documentation:
    https://docs.aws.amazon.com/AmazonS3/latest/API/sig-v4-header-based-auth.html
    https://docs.aws.amazon.com/AmazonS3/latest/userguide/RESTAuthentication.html"
-  (:require [clojure.java.io :as io]
-            [clojure.string :as str]
-            [aws-simple-sign.config :as config]
-            [aws-simple-sign.providers :as providers])
+  (:require [clojure.string :as str])
   (:import [java.net URL]
            [java.time ZoneId ZoneOffset]
            [java.time.format DateTimeFormatter]
@@ -102,7 +99,7 @@
 (defn signature
   "AWS specification: https://docs.aws.amazon.com/AmazonS3/latest/API/sig-v4-header-based-auth.html
    Inspired by https://gist.github.com/souenzzo/21f3e81b899ba3f04d5f8858b4ecc2e9"
-  [canonical-url credentials {:keys [scope method timestamp region service query-params content-sha256 signed-headers]}]
+  [credentials canonical-url {:keys [scope method timestamp region service query-params content-sha256 signed-headers]}]
   (let [encoded-url (uri-encode url-unreserved-chars canonical-url)
         signed-headers (->> signed-headers
                             (map (fn [[k v]] [(str/lower-case k) v]))
@@ -128,49 +125,6 @@
                         :service service
                         :short-date (subs timestamp 0 8)})))
 
-(defn guarantee-credientials
-  [{:aws/keys [access-key-id secret-access-key] :as credentials}]
-  (if (and access-key-id secret-access-key)
-    credentials
-    (throw (ex-info "AWS credentials missing or incomplete - check environment variables." {}))))
-
-(defn as-existing-file
-  "Takes a string with the path to the file
-   and returns a File object if the file exists otherwise nil."
-  [file-path]
-  (let [f (io/file file-path)]
-    (when (.exists f)
-      f)))
-
-(defn read-credentials-file
-  [file-path profile-name]
-  (when-let [f (as-existing-file file-path)]
-    (-> (config/parse f)
-        (get profile-name)
-        (or {}))))
-
-(def default-credentials-provider
-  (delay (providers/default-credentials-provider)))
-
-(defn read-env-credentials
-  ([]
-   (read-env-credentials (or (System/getenv "AWS_PROFILE") "default")))
-  ([profile-name]
-   ;; Only try to read AWS files if needed (and only once) by using "delay"
-   (let [file-conf (delay (read-credentials-file
-                           (or (System/getenv "AWS_CONFIG_FILE")
-                               (str (System/getProperty "user.home") "/.aws/config"))
-                           profile-name))]
-     (-> (providers/fetch @default-credentials-provider)
-         (assoc :aws/region (or (System/getenv "AWS_REGION")
-                                (System/getenv "AWS_DEFAULT_REGION")
-                                (get @file-conf "region")
-                                "us-east-1")
-                :aws/endpoint-url (or (System/getenv "AWS_ENDPOINT_URL_S3")
-                                      (System/getenv "AWS_ENDPOINT_URL")
-                                      (get @file-conf "endpoint_url")))
-         (guarantee-credientials)))))
-
 (defn hashed-payload
   [payload]
   (when (or (nil? payload) (string? payload))
@@ -187,16 +141,13 @@
          (into (sorted-map)))))
 
 (defn sign-request
-  ([request opts]
-   (sign-request request (read-env-credentials) opts))
-  ([{:keys [body headers method url] :as request}
-    credentials
+  ([client {:keys [body headers method url] :as request}
     {:keys [ref-time region service]
-     :or {region (:aws/region credentials)
+     :or {region (:region client)
           service "execute-api"
           ref-time (Date.)}}]
-   (let [timestamp (.format formatter (.toInstant ^Date ref-time))
-         service service
+   (let [credentials (:credentials client)
+         timestamp (.format formatter (.toInstant ^Date ref-time))
          url-obj (URL. url)
          content-sha256 (hashed-payload body)
          signed-headers (-> headers
@@ -205,7 +156,8 @@
                                    "x-amz-date" timestamp
                                    "x-amz-security-token" (:aws/session-token credentials)))
          scope (str (subs timestamp 0 8) "/" region "/" service "/aws4_request")
-         signature-str (signature (.getPath url-obj) credentials
+         signature-str (signature credentials
+                                  (.getPath url-obj)
                                   {:scope scope
                                    :timestamp timestamp
                                    :region region
@@ -231,14 +183,10 @@
         :region \"us-east-1\"}      ; signature locked to AWS region
    
    By default credentials are read from standard AWS location."
-  ([url]
-   (presign url (read-env-credentials) {}))
-  ([url opts]
-   (presign url (read-env-credentials) opts))
-  ([url credentials {:keys [ref-time region expires]
-                     :or {expires "3600"
-                          region (:aws/region credentials)
-                          ref-time (Date.)}}]
+  ([credentials url]
+   (presign credentials url {}))
+  ([credentials url {:keys [ref-time region expires]
+                     :or {ref-time (Date.) region "us-east-1" expires "3600"}}]
    (let [url-obj (URL. url)
          port (.getPort url-obj)
          host (cond-> (.getHost url-obj)
@@ -254,8 +202,8 @@
                               ["X-Amz-Security-Token" session-token])
                             (when expires
                               ["X-Amz-Expires" expires]))
-         signature (signature (.getPath url-obj)
-                              credentials
+         signature (signature credentials
+                              (.getPath url-obj)
                               {:timestamp timestamp
                                :region region
                                :service service
@@ -266,22 +214,36 @@
           (->query-str query-params)
           "&X-Amz-Signature=" signature))))
 
+(defn construct-endpoint-str
+  "Helper function to deal with the endpoints data structure from Cognitect client
+   which can be quite confusing."
+  ;; to keyword :protocol (singular) and :port only seems to exist
+  ;; when :endpoint-override is used to set up the client
+  ;; Also, :protocol is a keyword while :protocols contain a vector of strings
+  ;; On top there seems to be a region on both the client (root) and inside endpoint
+  [{:keys [hostname protocols protocol region port] :as _endpoint}]
+  (str (or (when protocol (name protocol))
+           (-> protocols sort last)) ; sort to prefer https
+       "://" (if (= "s3.amazonaws.com" hostname)
+               (str/replace hostname #"^s3\." (str "s3." region "."))
+               (str hostname (when port (str ":" port))))
+       "/"))
+
 (defn generate-presigned-url
-  "Takes bucket name, object key and a map with options.
-   The option `:path-style true` forces the use of the 'old way' of URL's."
-  ([bucket object-key opts]
-   (generate-presigned-url bucket object-key (read-env-credentials) opts))
-  ([bucket object-key credentials
-    {:keys [region endpoint]
-     :or {region (:aws/region credentials)
-          endpoint (:aws/endpoint-url credentials)} :as opts}]
-   (let [endpoint' (or (when endpoint
-                         (if (str/ends-with? endpoint "/")
-                           endpoint
-                           (str endpoint "/")))
-                       (str "https://s3." region ".amazonaws.com/"))]
-     (-> (if (:path-style opts)
-           (str endpoint' bucket "/")
-           (str/replace endpoint' #"://" (str "://" bucket ".")))
-         (str object-key)
-         (presign credentials opts)))))
+  "Takes client, bucket name, object key and an options map
+   with the following default values:
+
+       {:path-style false    ; path-style is the 'old way' of URL's
+        :endpoint nil}       ; alternative endpoint eg. \"http://localhost:9000\"
+
+   The options map is 'forwarded' to `presign`,
+   see that function for more relevant options.
+   Returns a presigned URL."
+  [client bucket object-key {:keys [endpoint path-style region] :as opts}]
+  (let [endpoint-str (or endpoint
+                         (construct-endpoint-str (:endpoint client)))
+        url (-> (if path-style
+                  (str endpoint-str bucket "/")
+                  (str/replace endpoint-str #"://" (str "://" bucket ".")))
+                (str object-key))]
+    (presign (:credentials client) url (assoc opts :region (or region (:region client))))))
