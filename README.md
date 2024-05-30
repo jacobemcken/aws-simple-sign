@@ -4,6 +4,8 @@ A Clojure library to pre-signed URLs (S3) and sign HTTP requests for AWS.
 The library only depends on Java core (no external Java dependencies),
 making it fairly light.
 
+[![bb compatible](https://raw.githubusercontent.com/babashka/babashka/master/logo/badge.svg)](https://babashka.org)
+
 If you stumble upon problems,
 feel free to reach out either by creating an issue
 or ping me via Clojurian Slack.
