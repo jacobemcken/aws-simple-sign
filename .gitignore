@@ -1,0 +1,23 @@
+# Clojure files and tools
+.calva
+.classpath
+.clj-kondo/.cache
+.cpcache
+.java-version
+.lein-*
+.lsp/.cache
+.lsp/sqlite.db
+.nrepl-history
+.nrepl-port
+.portal
+.project
+.socket-repl-port
+.sw*
+.vscode
+*.class
+*.jar
+*.swp
+*~
+/checkouts
+/classes
+/target
