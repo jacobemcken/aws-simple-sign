@@ -1,7 +1,23 @@
 (ns aws-simple-sign.core
   "Relevant AWS documentation:
-   https://docs.aws.amazon.com/AmazonS3/latest/API/sig-v4-header-based-auth.html
-   https://docs.aws.amazon.com/AmazonS3/latest/userguide/RESTAuthentication.html"
+
+   - https://docs.aws.amazon.com/AmazonS3/latest/API/sig-v4-header-based-auth.html
+   - https://docs.aws.amazon.com/AmazonS3/latest/userguide/RESTAuthentication.html
+
+   When the documentation references a client it is either a [awyeah][1] client,
+   a [Cognitect AWS API][2] client or a map with the following structure:
+
+       {:credentials #:aws{:access-key-id \"some-access-key\"
+                      :secret-access-key \"wild_secr3t\"
+                      :session-token \"FwoG...\"}
+        :region \"us-east-1\"
+        :endpoint {:protocol :https
+                   :hostname \"s3.amazonaws.com\"}}
+
+   Notice: `:endpoint` is optional.
+
+   [1]: https://github.com/grzm/awyeah-api
+   [2]: https://github.com/cognitect-labs/aws-api"
   (:require [clojure.string :as str])
   (:import [java.net URL]
            [java.time ZoneId ZoneOffset]
@@ -11,22 +27,22 @@
            (javax.crypto Mac)
            (javax.crypto.spec SecretKeySpec)))
 
-(defn hash-sha256
+(defn ^:no-doc hash-sha256
   [^String input]
   (let [hash (MessageDigest/getInstance "SHA-256")]
     (.update hash (.getBytes input))
     (.digest hash)))
 
-(def digits
+(def ^:no-doc digits
   (char-array "0123456789abcdef"))
 
-(defn hex-encode
+(defn ^:no-doc hex-encode
   [bytes]
   (->> bytes
        (mapcat #(list (get digits (bit-shift-right (bit-and 0xF0 %) 4))
                       (get digits (bit-and 0x0F %))))))
 
-(defn hex-encode-str
+(defn ^:no-doc hex-encode-str
   [bytes]
   (->> bytes
        (hex-encode)
@@ -36,45 +52,45 @@
 ;; https://gist.github.com/souenzzo/21f3e81b899ba3f04d5f8858b4ecc2e9
 ;; https://github.com/joseferben/clj-aws-sign/ (ring middelware)
 
-(defn hmac-sha-256
+(defn ^:no-doc hmac-sha-256
   [key ^String data]
   (let [algo "HmacSHA256"
         mac (Mac/getInstance algo)]
     (.init mac (SecretKeySpec. key algo))
     (.doFinal mac (.getBytes data "UTF-8"))))
 
-(defn char-range
+(defn ^:no-doc char-range
   [start end]
   (map char (range (int start) (inc (int end)))))
 
-(def unreserved-chars
+(def ^:no-doc unreserved-chars
   (->> (concat '(\- \. \_ \~)
                (char-range \A \Z)
                (char-range \a \z)
                (char-range \0 \9))
        (into #{})))
 
-(def url-unreserved-chars
+(def ^:no-doc url-unreserved-chars
   (conj unreserved-chars \/))
 
-(defn encode
+(defn ^:no-doc encode
   [skip-chars c]
   (if (skip-chars c)
     c
     (let [byte-val (int c)]
       (format "%%%X" byte-val))))
 
-(defn uri-encode
+(defn ^:no-doc uri-encode
   [skip-chars uri]
   (->> uri
        (map (partial encode skip-chars))
        (apply str)))
 
-(def ^DateTimeFormatter formatter
+(def ^DateTimeFormatter ^:no-doc formatter
   (-> (DateTimeFormatter/ofPattern "yyyyMMdd'T'HHmmss'Z'")
       (.withZone (ZoneId/from ZoneOffset/UTC))))
 
-(defn compute-signature
+(defn ^:no-doc compute-signature
   [{:keys [credentials str-to-sign region service short-date]}]
   (-> (str "AWS4" (:aws/secret-access-key credentials))
       (.getBytes)
@@ -85,10 +101,10 @@
       (hmac-sha-256 str-to-sign)
       hex-encode-str))
 
-(def algorithm
+(def ^:no-doc algorithm
   "AWS4-HMAC-SHA256")
 
-(defn ->query-str
+(defn ^:no-doc ->query-str
   [query-params]
   (->> query-params
        (map (fn [[k v]] [(uri-encode unreserved-chars k) (uri-encode unreserved-chars v)]))
@@ -125,12 +141,12 @@
                         :service service
                         :short-date (subs timestamp 0 8)})))
 
-(defn hashed-payload
+(defn ^:no-doc hashed-payload
   [payload]
   (when (or (nil? payload) (string? payload))
     (hex-encode-str (hash-sha256 (or payload "")))))
 
-(defn get-query-params
+(defn ^:no-doc get-query-params
   [params-str]
   (when (seq params-str)
     (->> (str/split params-str #"&")
@@ -141,6 +157,9 @@
          (into (sorted-map)))))
 
 (defn sign-request
+  "Takes a client and a Ring style request map.
+   Returns an enriched Ring style map with the required headers
+   needed for AWS signing."
   ([client {:keys [body headers method url] :as request}
     {:keys [ref-time region service]
      :or {region (:region client)
@@ -178,10 +197,11 @@
    for that particular object.
    Takes the following options (a map) as the last argument,
    the map value shows the default values:
+
        {:ref-time (java.util.Date.) ; timestamp incorporated into the signature
         :expires \"3600\"           ; signature expires x seconds after ref-time
         :region \"us-east-1\"}      ; signature locked to AWS region
-   
+
    By default credentials are read from standard AWS location."
   ([credentials url]
    (presign credentials url {}))
@@ -214,7 +234,7 @@
           (->query-str query-params)
           "&X-Amz-Signature=" signature))))
 
-(defn construct-endpoint-str
+(defn ^:no-doc construct-endpoint-str
   "Helper function to deal with the endpoints data structure from Cognitect client
    which can be quite confusing."
   ;; to keyword :protocol (singular) and :port only seems to exist
