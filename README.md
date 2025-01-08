@@ -1,8 +1,8 @@
 # aws-simple-sign
 
-A Clojure library to pre-signed URLs (S3) and sign HTTP requests for AWS.
+A Clojure library for pre-signing S3 URLs and signing HTTP requests for AWS.
 The library only depends on Java core (no external Java dependencies),
-making it fairly light.
+making it lightweight.
 
 [![bb compatible](https://raw.githubusercontent.com/babashka/babashka/master/logo/badge.svg)](https://babashka.org)
 
