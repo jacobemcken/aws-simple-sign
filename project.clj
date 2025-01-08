@@ -1,8 +1,8 @@
 (defproject dk.emcken/aws-simple-sign "2.0.0-alpha1"
   :description "A library to sign HTTP requests & generate presigned URL's for AWS"
   :url "https://github.com/jacobemcken/aws-simple-sign"
-  :license {:name "Eclipse Public License"
-            :url "http://www.eclipse.org/legal/epl-v10.html"}
+  :license {:name "The MIT License"
+            :url "http://opensource.org/licenses/MIT"}
   :dependencies [[org.clojure/clojure "1.11.1"]]
   :profiles {:dev {:dependencies [[org.babashka/http-client "0.3.11"]
                                   [com.cognitect.aws/api "0.8.692"]
