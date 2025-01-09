@@ -8,8 +8,8 @@
    a [Cognitect AWS API][2] client or a map with the following structure:
 
        {:credentials #:aws{:access-key-id \"some-access-key\"
-                      :secret-access-key \"wild_secr3t\"
-                      :session-token \"FwoG...\"}
+                           :secret-access-key \"wild_secr3t\"
+                           :session-token \"FwoG...\"}
         :region \"us-east-1\"
         :endpoint {:protocol :https
                    :hostname \"s3.amazonaws.com\"}}
@@ -114,6 +114,7 @@
 
 (defn signature
   "AWS specification: https://docs.aws.amazon.com/AmazonS3/latest/API/sig-v4-header-based-auth.html
+
    Inspired by https://gist.github.com/souenzzo/21f3e81b899ba3f04d5f8858b4ecc2e9"
   [credentials canonical-url {:keys [scope method timestamp region service query-params content-sha256 signed-headers]}]
   (let [encoded-url (uri-encode url-unreserved-chars canonical-url)
