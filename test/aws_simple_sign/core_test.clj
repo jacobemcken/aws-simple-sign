@@ -21,6 +21,21 @@
                                           "x-amz-content-sha256" "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
                                           "x-amz-date" "20130524T000000Z"}}))))
 
+(deftest canonical-request-hash
+  (is (= "7344ae5b7ee6c3e7e6b0fe0640412a37625d1fbfff95c48bbb2dc43964946972"
+         (-> (str "GET\n"
+                  "/test.txt\n"
+                  "\n"
+                  "host:examplebucket.s3.amazonaws.com\n"
+                  "range:bytes=0-9\n"
+                  "x-amz-content-sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\n"
+                  "x-amz-date:20130524T000000Z\n"
+                  "\n"
+                  "host;range;x-amz-content-sha256;x-amz-date\n"
+                  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855")
+             (sut/hash-sha256)
+             (sut/hex-encode-str)))))
+
 (deftest hashing-payloads
   (testing "hashing an empty payload"
     (is (= "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
