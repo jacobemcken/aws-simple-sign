@@ -194,20 +194,21 @@
                                       "Signature=" signature-str))))))
 
 (defn presign
-  "Take an URL for a S3 object and returns a string with a presigned GET-URL
+  "Take an URL for a S3 object and returns a string with a presigned URL
    for that particular object.
    Takes the following options (a map) as the last argument,
    the map value shows the default values:
 
        {:ref-time (java.util.Date.) ; timestamp incorporated into the signature
         :expires \"3600\"           ; signature expires x seconds after ref-time
-        :region \"us-east-1\"}      ; signature locked to AWS region
+        :region \"us-east-1\"       ; signature locked to AWS region
+        :method \"GET\"}            ; http method the url is to be called with
 
    By default credentials are read from standard AWS location."
   ([credentials url]
    (presign credentials url {}))
-  ([credentials url {:keys [ref-time region expires]
-                     :or {ref-time (Date.) region "us-east-1" expires "3600"}}]
+  ([credentials url {:keys [ref-time region expires method]
+                     :or {ref-time (Date.) region "us-east-1" expires "3600" method "GET"}}]
    (let [url-obj (URL. url)
          port (.getPort url-obj)
          host (cond-> (.getHost url-obj)
@@ -229,6 +230,7 @@
                                :region region
                                :service service
                                :scope scope
+                               :method method
                                :query-params query-params
                                :signed-headers {"host" host}})]
      (str (.getProtocol url-obj) "://" host (.getPath url-obj) "?"
