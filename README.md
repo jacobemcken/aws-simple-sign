@@ -39,7 +39,7 @@ The following example uses the `awyeah-api` lib.
            ;; and usually only relevant for non-Amazon or local setups
            #_#_:endpoint-override {:protocol :http
                                    :hostname "localhost"
-                                   :port 9000}))
+                                   :port 9000}}))
 ```
 
 Alternatively, the same data structure can be provided manually:
@@ -94,15 +94,15 @@ The following example illustrates how signing can be used from within a Babashka
 (require '[aws-simple-sign.core :as aws])
 (require '[babashka.http-client :as http])
 
-(let [signed-request (-> {:url "https://someurl/some-api-endpoint"
-                          :method :post
-                          :headers {"accept" "application/json"}
-                          :body "{\"somekey\": \"with some value\"}"}
-                          (aws/sign-request {:region "us-west-1"}))]
+(let [request {:url "https://someurl/some-api-endpoint"
+               :method :post
+               :headers {"accept" "application/json"}
+               :body "{\"somekey\": \"with some value\"}"}
+      signed-request (aws/sign-request client request {:region "us-west-1"})]
 
-    (http/post (:url signed-request)
-               (-> signed-request
-                   (select-keys [:body :headers]))))
+  (http/post (:url signed-request)
+             (-> signed-request
+                 (select-keys [:body :headers]))))
 ```
 
 [1]: https://github.com/cognitect-labs/aws-api
