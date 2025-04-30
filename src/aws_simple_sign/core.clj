@@ -202,12 +202,13 @@
        {:ref-time (java.util.Date.) ; timestamp incorporated into the signature
         :expires \"3600\"           ; signature expires x seconds after ref-time
         :region \"us-east-1\"       ; signature locked to AWS region
-        :method \"GET\"}            ; http method the url is to be called with
+        :method \"GET\"             ; http method the url is to be called with
+        :query-params {}}           ; extra query params e.g. {\"response-content-type\" \"text/csv\"}
 
    By default credentials are read from standard AWS location."
   ([credentials url]
    (presign credentials url {}))
-  ([credentials url {:keys [ref-time region expires method]
+  ([credentials url {:keys [ref-time region expires method query-params]
                      :or {ref-time (Date.) region "us-east-1" expires "3600" method "GET"}}]
    (let [url-obj (URL. url)
          port (.getPort url-obj)
@@ -216,10 +217,11 @@
          service "s3"
          timestamp (.format formatter (.toInstant ^Date ref-time))
          scope (str (subs timestamp 0 8) "/" region "/" service "/aws4_request")
-         query-params (conj {"X-Amz-Algorithm" algorithm
-                             "X-Amz-Credential" (str (:aws/access-key-id credentials) "/" scope)
-                             "X-Amz-Date" timestamp
-                             "X-Amz-SignedHeaders" "host"}
+         query-params (conj (merge query-params
+                                   {"X-Amz-Algorithm" algorithm
+                                    "X-Amz-Credential" (str (:aws/access-key-id credentials) "/" scope)
+                                    "X-Amz-Date" timestamp
+                                    "X-Amz-SignedHeaders" "host"})
                             (when-let [session-token (:aws/session-token credentials)]
                               ["X-Amz-Security-Token" session-token])
                             (when expires
