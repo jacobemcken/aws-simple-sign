@@ -19,7 +19,8 @@
    [1]: https://github.com/grzm/awyeah-api
    [2]: https://github.com/cognitect-labs/aws-api"
   (:require [clojure.string :as str])
-  (:import [java.net URL]
+  (:import [java.io InputStream]
+           [java.net URL]
            [java.time ZoneId ZoneOffset]
            [java.time.format DateTimeFormatter]
            [java.security MessageDigest]
@@ -27,11 +28,37 @@
            (javax.crypto Mac)
            (javax.crypto.spec SecretKeySpec)))
 
-(defn ^:no-doc hash-sha256
+ (defmulti hash-sha256
+   "Takes input like String or InputStream and returns a SHA256 hash."
+   (fn [input]
+     (cond
+       (instance? java.io.InputStream input)
+       :input-stream
+
+       (= String (type input))
+       :string)))
+
+(defmethod hash-sha256 :string
   [^String input]
   (let [hash (MessageDigest/getInstance "SHA-256")]
     (.update hash (.getBytes input))
     (.digest hash)))
+
+(defmethod hash-sha256 :input-stream
+  [^InputStream input]
+  (let [hash (MessageDigest/getInstance "SHA-256")
+        buffer (byte-array 8192)]
+    (loop []
+      (let [n (.read input buffer)]
+        (when (pos? n)
+          (.update hash buffer 0 n)
+          (recur))))
+    (.digest hash)))
+
+(defmethod hash-sha256 :default
+  [input]
+  (throw (ex-info "Unsupported input for calculating hash. Use String or InputStream."
+                  {:input-type (str (type input))})))
 
 (def ^:no-doc digits
   (char-array "0123456789abcdef"))
@@ -142,10 +169,13 @@
                         :service service
                         :short-date (subs timestamp 0 8)})))
 
-(defn ^:no-doc hashed-payload
+(defn hash-input
+  "Takes input as either `String` or `InputStream`
+   to calculate and return a hash."
   [payload]
-  (when (or (nil? payload) (string? payload))
-    (hex-encode-str (hash-sha256 (or payload "")))))
+  (some-> (or payload "")
+          (hash-sha256)
+          (hex-encode-str)))
 
 (defn ^:no-doc get-query-params
   [params-str]
@@ -162,14 +192,18 @@
    Returns an enriched Ring style map with the required headers
    needed for AWS signing."
   ([client {:keys [body headers method url] :as request}
-    {:keys [ref-time region service]
+    {:keys [ref-time region service payload-hash]
      :or {region (:region client)
           service "execute-api"
-          ref-time (Date.)}}]
+          ref-time (Date.)}
+     :as _opts}]
    (let [credentials (:credentials client)
          timestamp (.format formatter (.toInstant ^Date ref-time))
          url-obj (URL. url)
-         content-sha256 (hashed-payload body)
+         content-sha256 (or payload-hash
+                            (when (string? body) ; protect against consuming InputStreams which can only be consumed once.
+                              (hash-input body))
+                            "UNSIGNED-PAYLOAD")
          signed-headers (-> headers
                             (assoc "Host" (.getHost url-obj)
                                    "x-amz-content-sha256" content-sha256

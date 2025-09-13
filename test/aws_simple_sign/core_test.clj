@@ -1,6 +1,7 @@
 (ns aws-simple-sign.core-test
   (:require [clojure.test :refer [deftest is testing]]
-            [aws-simple-sign.core :as sut]))
+            [aws-simple-sign.core :as sut])
+  (:import (java.io ByteArrayInputStream)))
 
 (def credentials
   {:aws/access-key-id "AKIAIOSFODNN7EXAMPLE"
@@ -39,6 +40,13 @@
 (deftest hashing-payloads
   (testing "hashing an empty payload"
     (is (= "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-           (sut/hashed-payload "")))
+           (sut/hash-input "")))
     (is (= "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-           (sut/hashed-payload nil)))))
+           (sut/hash-input nil))))
+  (testing "hasing 'user@example.com'"
+    ;; Example taken from: https://stackoverflow.com/questions/71042721/how-to-base64-encode-a-sha256-hex-character-string
+    (is (= "b4c9a289323b21a01c3e940f150eb9b8c542587f1abfd8f0e1cc1ffc5e475514"
+           (sut/hash-input "user@example.com"))))
+  (testing "hasing a resetable InputStream"
+    (is (= "b4c9a289323b21a01c3e940f150eb9b8c542587f1abfd8f0e1cc1ffc5e475514"
+           (sut/hash-input (ByteArrayInputStream. (.getBytes "user@example.com")))))))

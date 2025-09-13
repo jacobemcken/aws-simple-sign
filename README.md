@@ -105,6 +105,28 @@ The following example illustrates how signing can be used from within a Babashka
                  (select-keys [:body :headers]))))
 ```
 
+#### Payload hash
+
+If the request `body` is a `String`, a payload hash is calculated automatically,
+while non-`String` bodies will leave the payload unsigned.
+If the body data is an `InputStream` with text,
+consider converting it to a string prior calling `sign-request`
+to avoid the "consumeable once" problem.
+(Not recommended for binary data and large amounts of data):
+
+```clojure
+(aws/sign-request client (update request :body slurp) {})
+```
+
+Alternatively, provide the payload-hash manually:
+```clojure
+(aws/sign-request client request {:payload-hash "b4c9a289323b21a01c3e940f150eb9b8c542587f1abfd8f0e1cc1ffc5e475514"})
+
+; or calculate from InputStream - remember the stream will be consumed (not reuseable)
+(aws/sign-request client request {:payload-hash (aws/hash-input some-input-stream)})
+```
+
+
 [1]: https://github.com/cognitect-labs/aws-api
 [2]: https://github.com/grzm/awyeah-api
 [3]: https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-envvars.html
