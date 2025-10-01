@@ -47,6 +47,10 @@
     ;; Example taken from: https://stackoverflow.com/questions/71042721/how-to-base64-encode-a-sha256-hex-character-string
     (is (= "b4c9a289323b21a01c3e940f150eb9b8c542587f1abfd8f0e1cc1ffc5e475514"
            (sut/hash-input "user@example.com"))))
+  (testing "hasing 'user@example.com'"
+    ;; Example taken from: https://docs.aws.amazon.com/AmazonS3/latest/API/sig-v4-header-based-auth.html
+    (is (= "44ce7dd67c959e0d3524ffac1771dfbba87d2b6b4b4e99e42034a8b803f8b072"
+           (sut/hash-input "Welcome to Amazon S3."))))
   (testing "hasing a resetable InputStream"
     (is (= "b4c9a289323b21a01c3e940f150eb9b8c542587f1abfd8f0e1cc1ffc5e475514"
            (sut/hash-input (ByteArrayInputStream. (.getBytes "user@example.com")))))))
