@@ -198,18 +198,21 @@
           ref-time (Date.)}
      :as _opts}]
    (let [credentials (:credentials client)
-         timestamp (.format formatter (.toInstant ^Date ref-time))
          url-obj (URL. url)
+         port (.getPort url-obj)
+         host (cond-> (.getHost url-obj)
+                (pos? port) (str ":" port))
+         timestamp (.format formatter (.toInstant ^Date ref-time))
+         scope (str (subs timestamp 0 8) "/" region "/" service "/aws4_request")
          content-sha256 (or payload-hash
                             (when (string? body) ; protect against consuming InputStreams which can only be consumed once.
                               (hash-input body))
                             "UNSIGNED-PAYLOAD")
          signed-headers (-> headers
-                            (assoc "Host" (.getHost url-obj)
+                            (assoc "Host" host
                                    "x-amz-content-sha256" content-sha256
                                    "x-amz-date" timestamp
                                    "x-amz-security-token" (:aws/session-token credentials)))
-         scope (str (subs timestamp 0 8) "/" region "/" service "/aws4_request")
          signature-str (signature credentials
                                   (.getPath url-obj)
                                   {:scope scope
