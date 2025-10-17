@@ -153,7 +153,7 @@
                          (apply str))
         signed-headers-str (str/join ";" (map key signed-headers))
         query-str (->query-str query-params)
-        canonical-request (str (or method "GET") "\n"
+        canonical-request (str (-> (or method :get) name str/upper-case) "\n"
                                encoded-url "\n"
                                query-str "\n"
                                headers-str "\n"
@@ -219,7 +219,7 @@
                                    :timestamp timestamp
                                    :region region
                                    :service service
-                                   :method (-> method name str/upper-case)
+                                   :method method
                                    :signed-headers signed-headers
                                    :query-params (get-query-params (.getQuery url-obj))
                                    :content-sha256 content-sha256})]
@@ -239,13 +239,13 @@
        {:ref-time (java.util.Date.) ; timestamp incorporated into the signature
         :expires \"3600\"           ; signature expires x seconds after ref-time
         :region \"us-east-1\"       ; signature locked to AWS region
-        :method \"GET\"}            ; http method the url is to be called with
+        :method :get}               ; http method the url is to be called with
 
    By default credentials are read from standard AWS location."
   ([credentials url]
    (presign credentials url {}))
   ([credentials url {:keys [ref-time region expires method]
-                     :or {ref-time (Date.) region "us-east-1" expires "3600" method "GET"}}]
+                     :or {ref-time (Date.) region "us-east-1" expires "3600"}}]
    (let [url-obj (URL. url)
          port (.getPort url-obj)
          host (cond-> (.getHost url-obj)
