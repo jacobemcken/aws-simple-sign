@@ -17,6 +17,10 @@ Include the dependency in your project:
 
 [![Clojars Project](https://img.shields.io/clojars/v/dk.emcken/aws-simple-sign.svg?include_prereleases)](https://clojars.org/dk.emcken/aws-simple-sign)
 
+For general usage with small examples see below.
+For a more in depth tutorial about using S3 (including presigned URLs),
+checkout the blog post [Local S3 storage with MinIO for your Clojure dev environment][5].
+
 
 ### AWS Credentials
 
@@ -131,3 +135,4 @@ Alternatively, provide the payload-hash manually:
 [2]: https://github.com/grzm/awyeah-api
 [3]: https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-envvars.html
 [4]: https://github.com/babashka/babashka
+[5]: https://www.emcken.dk/programming/2025/04/21/local-s3-storage-with-minio-for-clojure-dev-env/
