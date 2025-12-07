@@ -1,4 +1,4 @@
-(defproject dk.emcken/aws-simple-sign "2.2.0-SNAPSHOT"
+(defproject dk.emcken/aws-simple-sign "2.2.0"
   :description "A library to sign HTTP requests & generate presigned URL's for AWS"
   :url "https://github.com/jacobemcken/aws-simple-sign"
   :license {:name "The MIT License"
