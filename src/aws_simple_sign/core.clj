@@ -139,26 +139,32 @@
        (map (fn [[k v]] (str k "=" v)))
        (str/join "&")))
 
+(defn ^:no-doc ->headers-str
+  [headers]
+  (->> headers
+       (map (fn [[k v]] (str k ":" (some-> v str/trim) "\n")))
+       (apply str)))
+
+(defn canonical-request-str
+  "Generates a canonical request string as specified here:
+   https://docs.aws.amazon.com/AmazonS3/latest/API/sig-v4-header-based-auth.html#canonical-request"
+  [canonical-url {:keys [content-sha256 method query-params signed-headers] :as _opts}]
+  (let [sorted-signed-headers (->> signed-headers
+                                   (map (fn [[k v]] [(str/lower-case k) v]))
+                                   (into (sorted-map)))]
+    (str (-> (or method :get) name str/upper-case) "\n"
+         (uri-encode url-unreserved-chars canonical-url) "\n"
+         (->query-str query-params) "\n"
+         (->headers-str sorted-signed-headers) "\n"
+         (str/join ";" (map key sorted-signed-headers)) "\n"
+         (or content-sha256 "UNSIGNED-PAYLOAD"))))
+
 (defn signature
   "AWS specification: https://docs.aws.amazon.com/AmazonS3/latest/API/sig-v4-header-based-auth.html
 
    Inspired by https://gist.github.com/souenzzo/21f3e81b899ba3f04d5f8858b4ecc2e9"
-  [credentials canonical-url {:keys [scope method timestamp region service query-params content-sha256 signed-headers]}]
-  (let [encoded-url (uri-encode url-unreserved-chars canonical-url)
-        signed-headers (->> signed-headers
-                            (map (fn [[k v]] [(str/lower-case k) v]))
-                            (into (sorted-map)))
-        headers-str (->> signed-headers
-                         (map (fn [[k v]] (str k ":" (str/trim (or v "")) "\n")))
-                         (apply str))
-        signed-headers-str (str/join ";" (map key signed-headers))
-        query-str (->query-str query-params)
-        canonical-request (str (-> (or method :get) name str/upper-case) "\n"
-                               encoded-url "\n"
-                               query-str "\n"
-                               headers-str "\n"
-                               signed-headers-str "\n"
-                               (or content-sha256 "UNSIGNED-PAYLOAD"))
+  [credentials canonical-url {:keys [scope timestamp region service] :as opts}]
+  (let [canonical-request (canonical-request-str canonical-url (select-keys opts [:content-sha256 :method :query-params :signed-headers]))
         str-to-sign (str algorithm "\n"
                          timestamp "\n"
                          scope "\n"

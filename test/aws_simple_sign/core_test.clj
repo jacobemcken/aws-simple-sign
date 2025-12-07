@@ -22,20 +22,46 @@
                                           "x-amz-content-sha256" "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
                                           "x-amz-date" "20130524T000000Z"}}))))
 
-(deftest canonical-request-hash
-  (is (= "7344ae5b7ee6c3e7e6b0fe0640412a37625d1fbfff95c48bbb2dc43964946972"
-         (-> (str "GET\n"
-                  "/test.txt\n"
-                  "\n"
-                  "host:examplebucket.s3.amazonaws.com\n"
-                  "range:bytes=0-9\n"
-                  "x-amz-content-sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\n"
-                  "x-amz-date:20130524T000000Z\n"
-                  "\n"
-                  "host;range;x-amz-content-sha256;x-amz-date\n"
-                  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855")
-             (sut/hash-sha256)
-             (sut/hex-encode-str)))))
+(deftest canonical-request-generation
+  (testing "Exact example from official documentation"
+    (let [canonical-request (sut/canonical-request-str
+                             "/test.txt"
+                             {:signed-headers {"Host" "examplebucket.s3.amazonaws.com"
+                                               "Range" "bytes=0-9"
+                                               "x-amz-content-sha256" "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                                               "X-AMZ-date" "20130524T000000Z"}
+                              :content-sha256 "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"})]
+      (is (= "GET
+/test.txt
+
+host:examplebucket.s3.amazonaws.com
+range:bytes=0-9
+x-amz-content-sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+x-amz-date:20130524T000000Z
+
+host;range;x-amz-content-sha256;x-amz-date
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+           canonical-request))
+      (is (= "7344ae5b7ee6c3e7e6b0fe0640412a37625d1fbfff95c48bbb2dc43964946972"
+             (-> canonical-request
+                 (sut/hash-sha256)
+                 (sut/hex-encode-str))))))
+
+  (testing "Sorting of query params"
+    (is (= "GET
+/test.txt
+marker=someMarker&max-keys=20&prefix=somePrefix
+host:examplebucket.s3.amazonaws.com
+
+host
+UNSIGNED-PAYLOAD"
+           (sut/canonical-request-str
+            "/test.txt"
+            {:method :get
+             :signed-headers {"Host" "examplebucket.s3.amazonaws.com"}
+             :query-params {"prefix" "somePrefix" ;notice the unsorted order
+                            "marker" "someMarker"
+                            "max-keys" "20"}})))))
 
 (deftest hashing-payloads
   (testing "hashing an empty payload"
