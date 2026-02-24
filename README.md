@@ -90,6 +90,19 @@ For more information about "virtual hosted vs. path style" in the official annou
 - 22 SEP 2020 https://aws.amazon.com/blogs/storage/update-to-amazon-s3-path-deprecation-plan/
 
 
+#### Override response headers
+
+It is possible to override response headers using the following:
+
+```clojure
+  (generate-presigned-url client "somebucket" "someobject.csv" {:override-response-headers {"Response-Content-Type" "text/csv"}})
+"https://s3.us-east-1.amazonaws.com/somebucket/someobject.csv?response-content-type=text%2Fcsv&X-Amz-Security-Token=FwoG..."
+```
+
+Keywords can be used instead of string header names:
+`{:response-content-type "text/csv"}`
+
+
 ### Signed HTTP requests
 
 The following example illustrates how signing can be used from within a Babashka script:
