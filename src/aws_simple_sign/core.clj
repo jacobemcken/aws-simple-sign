@@ -131,6 +131,18 @@
 (def ^:no-doc algorithm
   "AWS4-HMAC-SHA256")
 
+;; To override values for a set of response headers in the GetObject response,
+;; you can use the following query parameters in the request.
+;; https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html
+
+(def ^:no-doc response-header-types
+  #{"response-cache-control"
+    "response-content-disposition"
+    "response-content-encoding"
+    "response-content-language"
+    "response-content-type"
+    "response-expires"})
+
 (defn ^:no-doc ->query-str
   [query-params]
   (->> query-params
@@ -242,16 +254,17 @@
    Takes the following options (a map) as the last argument,
    the map value shows the default values:
 
-       {:ref-time (java.util.Date.) ; timestamp incorporated into the signature
-        :expires \"3600\"           ; signature expires x seconds after ref-time
-        :region \"us-east-1\"       ; signature locked to AWS region
-        :method :get}               ; http method the url is to be called with
+       {:ref-time (java.util.Date.)    ; timestamp incorporated into the signature
+        :expires \"3600\"              ; signature expires x seconds after ref-time
+        :region \"us-east-1\"          ; signature locked to AWS region
+        :method :get                   ; http method the url is to be called with
+        :override-response-headers {}} ; override response headers
 
    By default credentials are read from standard AWS location."
   ([credentials url]
    (presign credentials url {}))
-  ([credentials url {:keys [ref-time region expires method]
-                     :or {ref-time (Date.) region "us-east-1" expires "3600"}}]
+  ([credentials url {:keys [ref-time region expires method override-response-headers]
+                     :or {ref-time (Date.) region "us-east-1" expires "3600" override-response-headers {}}}]
    (let [url-obj (URL. url)
          port (.getPort url-obj)
          host (cond-> (.getHost url-obj)
@@ -259,6 +272,9 @@
          service "s3"
          timestamp (.format formatter (.toInstant ^Date ref-time))
          scope (str (subs timestamp 0 8) "/" region "/" service "/aws4_request")
+         extra-query-params (-> override-response-headers
+                                (update-keys (comp str/lower-case name))
+                                (select-keys response-header-types))
          query-params (conj {"X-Amz-Algorithm" algorithm
                              "X-Amz-Credential" (str (:aws/access-key-id credentials) "/" scope)
                              "X-Amz-Date" timestamp
@@ -266,7 +282,8 @@
                             (when-let [session-token (:aws/session-token credentials)]
                               ["X-Amz-Security-Token" session-token])
                             (when expires
-                              ["X-Amz-Expires" expires]))
+                              ["X-Amz-Expires" expires])
+                            extra-query-params)
          signature (signature credentials
                               (.getPath url-obj)
                               {:timestamp timestamp
