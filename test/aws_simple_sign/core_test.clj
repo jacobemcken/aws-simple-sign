@@ -41,7 +41,7 @@ x-amz-date:20130524T000000Z
 
 host;range;x-amz-content-sha256;x-amz-date
 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-           canonical-request))
+             canonical-request))
       (is (= "7344ae5b7ee6c3e7e6b0fe0640412a37625d1fbfff95c48bbb2dc43964946972"
              (-> canonical-request
                  (sut/hash-sha256)
@@ -54,14 +54,30 @@ marker=someMarker&max-keys=20&prefix=somePrefix
 host:examplebucket.s3.amazonaws.com
 
 host
-UNSIGNED-PAYLOAD"
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
            (sut/canonical-request-str
             "/test.txt"
             {:method :get
              :signed-headers {"Host" "examplebucket.s3.amazonaws.com"}
              :query-params {"prefix" "somePrefix" ;notice the unsorted order
                             "marker" "someMarker"
-                            "max-keys" "20"}})))))
+                            "max-keys" "20"}}))))
+
+  (testing "UNSIGNED-PAYLOAD"
+    (is (= "GET
+/test.txt
+
+host:examplebucket.s3.amazonaws.com
+x-amz-content-sha256:UNSIGNED-PAYLOAD
+
+host;x-amz-content-sha256
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+           (sut/canonical-request-str
+            "/test.txt"
+            {:method :get
+             :signed-headers {"Host" "examplebucket.s3.amazonaws.com"
+                              "x-amz-content-sha256" "UNSIGNED-PAYLOAD"}
+             :content-sha256 nil})))))
 
 (deftest hashing-payloads
   (testing "hashing an empty payload"
