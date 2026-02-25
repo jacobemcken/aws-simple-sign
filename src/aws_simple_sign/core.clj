@@ -157,6 +157,14 @@
        (map (fn [[k v]] (str k ":" (some-> v str/trim) "\n")))
        (apply str)))
 
+(defn hash-input
+  "Takes input as either `String` or `InputStream`
+   to calculate and return a hash."
+  [payload]
+  (some-> (or payload "")
+          (hash-sha256)
+          (hex-encode-str)))
+
 (defn canonical-request-str
   "Generates a canonical request string as specified here:
    https://docs.aws.amazon.com/AmazonS3/latest/API/sig-v4-header-based-auth.html#canonical-request"
@@ -169,7 +177,7 @@
          (->query-str query-params) "\n"
          (->headers-str sorted-signed-headers) "\n"
          (str/join ";" (map key sorted-signed-headers)) "\n"
-         (or content-sha256 "UNSIGNED-PAYLOAD"))))
+         (or content-sha256 (hash-input nil)))))
 
 (defn signature
   "AWS specification: https://docs.aws.amazon.com/AmazonS3/latest/API/sig-v4-header-based-auth.html
@@ -186,14 +194,6 @@
                         :region region
                         :service service
                         :short-date (subs timestamp 0 8)})))
-
-(defn hash-input
-  "Takes input as either `String` or `InputStream`
-   to calculate and return a hash."
-  [payload]
-  (some-> (or payload "")
-          (hash-sha256)
-          (hex-encode-str)))
 
 (defn ^:no-doc get-query-params
   [params-str]
@@ -224,11 +224,10 @@
          scope (str (subs timestamp 0 8) "/" region "/" service "/aws4_request")
          content-sha256 (or payload-hash
                             (when (string? body) ; protect against consuming InputStreams which can only be consumed once.
-                              (hash-input body))
-                            "UNSIGNED-PAYLOAD")
+                              (hash-input body)))
          signed-headers (-> headers
                             (assoc "Host" host
-                                   "x-amz-content-sha256" content-sha256
+                                   "x-amz-content-sha256" (or content-sha256 "UNSIGNED-PAYLOAD")
                                    "x-amz-date" timestamp
                                    "x-amz-security-token" (:aws/session-token credentials)))
          signature-str (signature credentials

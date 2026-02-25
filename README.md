@@ -95,7 +95,7 @@ For more information about "virtual hosted vs. path style" in the official annou
 It is possible to override response headers using the following:
 
 ```clojure
-  (generate-presigned-url client "somebucket" "someobject.csv" {:override-response-headers {"Response-Content-Type" "text/csv"}})
+(generate-presigned-url client "somebucket" "someobject.csv" {:override-response-headers {"Response-Content-Type" "text/csv"}})
 "https://s3.us-east-1.amazonaws.com/somebucket/someobject.csv?response-content-type=text%2Fcsv&X-Amz-Security-Token=FwoG..."
 ```
 
