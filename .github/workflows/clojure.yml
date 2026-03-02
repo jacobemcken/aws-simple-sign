@@ -1,0 +1,26 @@
+name: Clojure CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install Clojure tools
+      uses: DeLaGuardo/setup-clojure@13.0
+      with:
+        lein: 2.11.2
+
+    - name: Install dependencies
+      run: lein with-profile test deps
+
+    - name: Run tests
+      run: lein with-profile test test
