@@ -292,7 +292,8 @@
                                :scope scope
                                :method method
                                :query-params query-params
-                               :signed-headers {"host" host}})]
+                               :signed-headers {"host" host}
+                               :content-sha256 "UNSIGNED-PAYLOAD"})]
      (str (.getProtocol url-obj) "://" host (.getPath url-obj) "?"
           (->query-str query-params)
           "&X-Amz-Signature=" signature))))
