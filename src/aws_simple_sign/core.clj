@@ -171,10 +171,11 @@
   [canonical-url {:keys [content-sha256 method query-params signed-headers] :as _opts}]
   (let [sorted-signed-headers (->> signed-headers
                                    (map (fn [[k v]] [(str/lower-case k) v]))
-                                   (into (sorted-map)))]
+                                   (into (sorted-map)))
+        sorted-query-params (into (sorted-map) query-params)]
     (str (-> (or method :get) name str/upper-case) "\n"
          (uri-encode url-unreserved-chars canonical-url) "\n"
-         (->query-str query-params) "\n"
+         (->query-str sorted-query-params) "\n"
          (->headers-str sorted-signed-headers) "\n"
          (str/join ";" (map key sorted-signed-headers)) "\n"
          (or content-sha256 (hash-input nil)))))
