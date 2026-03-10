@@ -290,6 +290,9 @@
                                :service service
                                :scope scope
                                :method method
+                               ;; Use `UNSIGNED-PAYLOAD` because presigned URLs are used to uplaod an arbitrary payload.
+                               ;; For more information, see: https://docs.aws.amazon.com/AmazonS3/latest/API/sigv4-query-string-auth.html
+                               :content-sha256 "UNSIGNED-PAYLOAD"
                                :query-params query-params
                                :signed-headers {"host" host}})]
      (str (.getProtocol url-obj) "://" host (.getPath url-obj) "?"
