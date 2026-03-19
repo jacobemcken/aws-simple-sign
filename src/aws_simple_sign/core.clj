@@ -104,8 +104,10 @@
   [skip-chars c]
   (if (skip-chars c)
     c
-    (let [byte-val (int c)]
-      (format "%%%X" byte-val))))
+    (-> (str c)
+        (String/.getBytes "UTF-8")
+        (->> (map #(format "%%%02X" (bit-and 0xFF %)))
+             (apply str)))))
 
 (defn ^:no-doc uri-encode
   [skip-chars uri]

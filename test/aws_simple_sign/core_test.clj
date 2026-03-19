@@ -96,3 +96,8 @@ e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
   (testing "hasing a resetable InputStream"
     (is (= "b4c9a289323b21a01c3e940f150eb9b8c542587f1abfd8f0e1cc1ffc5e475514"
            (sut/hash-input (ByteArrayInputStream. (.getBytes "user@example.com")))))))
+
+(deftest url-encoding-with-special-characters-and-spaces
+  (testing "UTF-8 encoding of special characters and spaces"
+    (is (= "/test%20%C3%A6%C3%B8%C3%A5.txt"
+           (sut/uri-encode sut/url-unreserved-chars "/test æøå.txt")))))
