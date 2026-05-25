@@ -1,7 +1,9 @@
 (ns aws-simple-sign.core-test
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [clojure.string :as str]
+            [clojure.test :refer [deftest is testing]]
             [aws-simple-sign.core :as sut])
-  (:import (java.io ByteArrayInputStream)))
+  (:import (java.io ByteArrayInputStream)
+           (java.util Date)))
 
 (def credentials
   {:aws/access-key-id "AKIAIOSFODNN7EXAMPLE"
@@ -101,3 +103,79 @@ e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
   (testing "UTF-8 encoding of special characters and spaces"
     (is (= "/test%20%C3%A6%C3%B8%C3%A5.txt"
            (sut/uri-encode sut/url-unreserved-chars "/test æøå.txt")))))
+
+(def ^:private fixed-time (Date. 0))
+
+(def ^:private base-opts
+  {:ref-time fixed-time
+   :method :get
+   :region "us-east-1"
+   :expires "3600"})
+
+(def ^:private client
+  {:credentials credentials})
+
+(defn- url-path
+  "Return the path portion of `url` (between the host and the `?`)."
+  [url]
+  (let [start (str/index-of url "/" (count "https://"))
+        end (str/index-of url "?")]
+    (subs url start end)))
+
+(deftest generate-presigned-url-reserved-chars
+  (testing "# in object key is encoded as %23 and signs correctly"
+    (let [opts (assoc base-opts
+                      :endpoint "https://s3.us-east-1.amazonaws.com/"
+                      :path-style true)
+          from-key (sut/generate-presigned-url client "bucket" "foo#bar.txt" opts)
+          from-url (sut/presign credentials
+                                "https://s3.us-east-1.amazonaws.com/bucket/foo%23bar.txt"
+                                base-opts)]
+      (is (= "/bucket/foo%23bar.txt" (url-path from-key)))
+      (is (= from-key from-url) "raw-key path and pre-encoded-URL path produce identical signature")))
+
+  (testing "spaces in object key are encoded as %20 (never as +)"
+    (let [opts (assoc base-opts
+                      :endpoint "https://s3.us-east-1.amazonaws.com/"
+                      :path-style true)
+          from-key (sut/generate-presigned-url client "bucket" "foo bar.txt" opts)
+          from-url (sut/presign credentials
+                                "https://s3.us-east-1.amazonaws.com/bucket/foo%20bar.txt"
+                                base-opts)]
+      (is (= "/bucket/foo%20bar.txt" (url-path from-key)))
+      (is (= from-key from-url))))
+
+  (testing "? in object key is encoded as %3F"
+    (let [opts (assoc base-opts
+                      :endpoint "https://s3.us-east-1.amazonaws.com/"
+                      :path-style true)
+          from-key (sut/generate-presigned-url client "bucket" "foo?bar.txt" opts)
+          from-url (sut/presign credentials
+                                "https://s3.us-east-1.amazonaws.com/bucket/foo%3Fbar.txt"
+                                base-opts)]
+      (is (= "/bucket/foo%3Fbar.txt" (url-path from-key)))
+      (is (= from-key from-url))))
+
+  (testing "virtual-hosted style keeps the bucket in the host"
+    (let [opts (assoc base-opts
+                      :endpoint "https://s3.us-east-1.amazonaws.com/")
+          from-key (sut/generate-presigned-url client "bucket" "foo#bar.txt" opts)]
+      (is (str/starts-with? from-key "https://bucket.s3.us-east-1.amazonaws.com/foo%23bar.txt?"))))
+
+  (testing "UTF-8 in object key is encoded correctly"
+    (let [opts (assoc base-opts
+                      :endpoint "https://s3.us-east-1.amazonaws.com/"
+                      :path-style true)
+          from-key (sut/generate-presigned-url client "bucket" "æøå.txt" opts)]
+      (is (= "/bucket/%C3%A6%C3%B8%C3%A5.txt" (url-path from-key))))))
+
+(deftest canonical-request-passes-uri-through
+  (testing "canonical-request-str uses its canonical-uri argument verbatim (caller encodes)"
+    (let [encoded "/foo%23bar%20baz"
+          out (sut/canonical-request-str
+               encoded
+               {:method :get
+                :signed-headers {"host" "bucket.s3.us-east-1.amazonaws.com"}
+                :content-sha256 "UNSIGNED-PAYLOAD"})]
+      (is (str/includes? out encoded))
+      (is (not (str/includes? out "%2523"))))))

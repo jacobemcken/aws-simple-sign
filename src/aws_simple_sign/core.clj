@@ -115,6 +115,13 @@
        (map (partial encode skip-chars))
        (apply str)))
 
+(defn ^:no-doc host-with-port
+  "Returns `host`, appending `:port` if `port` is set (positive)."
+  [host port]
+  (if (and port (pos? port))
+    (str host ":" port)
+    host))
+
 (def ^DateTimeFormatter ^:no-doc formatter
   (-> (DateTimeFormatter/ofPattern "yyyyMMdd'T'HHmmss'Z'")
       (.withZone (ZoneId/from ZoneOffset/UTC))))
@@ -169,13 +176,16 @@
 
 (defn canonical-request-str
   "Generates a canonical request string as specified here:
-   https://docs.aws.amazon.com/AmazonS3/latest/API/sig-v4-header-based-auth.html#canonical-request"
-  [canonical-url {:keys [content-sha256 method query-params signed-headers] :as _opts}]
+   https://docs.aws.amazon.com/AmazonS3/latest/API/sig-v4-header-based-auth.html#canonical-request
+
+   `canonical-uri` must already be URI-encoded; this function does not
+   encode it. Use [[uri-encode]] with [[url-unreserved-chars]] for raw paths."
+  [canonical-uri {:keys [content-sha256 method query-params signed-headers] :as _opts}]
   (let [sorted-signed-headers (->> signed-headers
                                    (map (fn [[k v]] [(str/lower-case k) v]))
                                    (into (sorted-map)))]
     (str (-> (or method :get) name str/upper-case) "\n"
-         (uri-encode url-unreserved-chars canonical-url) "\n"
+         canonical-uri "\n"
          (->query-str query-params) "\n"
          (->headers-str sorted-signed-headers) "\n"
          (str/join ";" (map key sorted-signed-headers)) "\n"
@@ -184,9 +194,11 @@
 (defn signature
   "AWS specification: https://docs.aws.amazon.com/AmazonS3/latest/API/sig-v4-header-based-auth.html
 
+   `canonical-uri` must already be URI-encoded.
+
    Inspired by https://gist.github.com/souenzzo/21f3e81b899ba3f04d5f8858b4ecc2e9"
-  [credentials canonical-url {:keys [scope timestamp region service] :as opts}]
-  (let [canonical-request (canonical-request-str canonical-url (select-keys opts [:content-sha256 :method :query-params :signed-headers]))
+  [credentials canonical-uri {:keys [scope timestamp region service] :as opts}]
+  (let [canonical-request (canonical-request-str canonical-uri (select-keys opts [:content-sha256 :method :query-params :signed-headers]))
         str-to-sign (str algorithm "\n"
                          timestamp "\n"
                          scope "\n"
@@ -219,9 +231,7 @@
      :as _opts}]
    (let [credentials (:credentials client)
          url-obj (URL. url)
-         port (.getPort url-obj)
-         host (cond-> (.getHost url-obj)
-                (pos? port) (str ":" port))
+         host (host-with-port (.getHost url-obj) (.getPort url-obj))
          timestamp (.format formatter (.toInstant ^Date ref-time))
          scope (str (subs timestamp 0 8) "/" region "/" service "/aws4_request")
          content-sha256 (or payload-hash
@@ -249,6 +259,45 @@
                                       "SignedHeaders=" (str/join ";" (map key signed-headers)) ", "
                                       "Signature=" signature-str))))))
 
+(defn ^:no-doc presign*
+  "Internal: build a presigned S3 URL from decomposed components.
+   `canonical-uri` is the already-encoded path portion of the URL,
+   e.g. \"/bucket/foo%20bar%23baz.png\". It is used verbatim for both the
+   signed canonical request and the path of the returned URL."
+  [credentials
+   {:keys [protocol host canonical-uri]}
+   {:keys [ref-time region expires method override-response-headers]
+    :or {ref-time (Date.) region "us-east-1" expires "3600" override-response-headers {}}}]
+  (let [timestamp          (.format formatter (.toInstant ^Date ref-time))
+        scope              (str (subs timestamp 0 8) "/" region "/s3/aws4_request")
+        extra-query-params (-> override-response-headers
+                               (update-keys (comp str/lower-case name))
+                               (select-keys response-header-types))
+        query-params       (conj {"X-Amz-Algorithm"     algorithm
+                                  "X-Amz-Credential"    (str (:aws/access-key-id credentials) "/" scope)
+                                  "X-Amz-Date"          timestamp
+                                  "X-Amz-SignedHeaders" "host"}
+                                 (when-let [session-token (:aws/session-token credentials)]
+                                   ["X-Amz-Security-Token" session-token])
+                                 (when expires
+                                   ["X-Amz-Expires" expires])
+                                 extra-query-params)
+        sig                (signature credentials
+                                      canonical-uri
+                                      {:timestamp      timestamp
+                                       :region         region
+                                       :service        "s3"
+                                       :scope          scope
+                                       :method         method
+                                       ;; Use `UNSIGNED-PAYLOAD` because presigned URLs are used to upload an arbitrary payload.
+                                       ;; https://docs.aws.amazon.com/AmazonS3/latest/API/sigv4-query-string-auth.html
+                                       :content-sha256 "UNSIGNED-PAYLOAD"
+                                       :query-params   query-params
+                                       :signed-headers {"host" host}})]
+    (str protocol "://" host canonical-uri "?"
+         (->query-str query-params)
+         "&X-Amz-Signature=" sig)))
+
 (defn presign
   "Take an URL for a S3 object and returns a string with a presigned URL
    for that particular object.
@@ -261,60 +310,42 @@
         :method :get                   ; http method the url is to be called with
         :override-response-headers {}} ; override response headers
 
+   The input URL must be properly URI-encoded (any `#`, `?`, space etc. in
+   the object key must appear as `%23`, `%3F`, `%20` etc.). If you have a
+   raw bucket+key pair, prefer `generate-presigned-url` which handles
+   encoding for you.
+
    By default credentials are read from standard AWS location."
   ([credentials url]
    (presign credentials url {}))
-  ([credentials url {:keys [ref-time region expires method override-response-headers]
-                     :or {ref-time (Date.) region "us-east-1" expires "3600" override-response-headers {}}}]
-   (let [url-obj (URL. url)
-         port (.getPort url-obj)
-         host (cond-> (.getHost url-obj)
-                (pos? port) (str ":" port))
-         service "s3"
-         timestamp (.format formatter (.toInstant ^Date ref-time))
-         scope (str (subs timestamp 0 8) "/" region "/" service "/aws4_request")
-         extra-query-params (-> override-response-headers
-                                (update-keys (comp str/lower-case name))
-                                (select-keys response-header-types))
-         query-params (conj {"X-Amz-Algorithm" algorithm
-                             "X-Amz-Credential" (str (:aws/access-key-id credentials) "/" scope)
-                             "X-Amz-Date" timestamp
-                             "X-Amz-SignedHeaders" "host"}
-                            (when-let [session-token (:aws/session-token credentials)]
-                              ["X-Amz-Security-Token" session-token])
-                            (when expires
-                              ["X-Amz-Expires" expires])
-                            extra-query-params)
-         signature (signature credentials
-                              (.getPath url-obj)
-                              {:timestamp timestamp
-                               :region region
-                               :service service
-                               :scope scope
-                               :method method
-                               ;; Use `UNSIGNED-PAYLOAD` because presigned URLs are used to uplaod an arbitrary payload.
-                               ;; For more information, see: https://docs.aws.amazon.com/AmazonS3/latest/API/sigv4-query-string-auth.html
-                               :content-sha256 "UNSIGNED-PAYLOAD"
-                               :query-params query-params
-                               :signed-headers {"host" host}})]
-     (str (.getProtocol url-obj) "://" host (.getPath url-obj) "?"
-          (->query-str query-params)
-          "&X-Amz-Signature=" signature))))
+  ([credentials url opts]
+   (let [url-obj (URL. url)]
+     (presign* credentials
+               {:protocol      (.getProtocol url-obj)
+                :host          (host-with-port (.getHost url-obj) (.getPort url-obj))
+                :canonical-uri (.getPath url-obj)}
+               opts))))
 
-(defn ^:no-doc construct-endpoint-str
-  "Helper function to deal with the endpoints data structure from Cognitect client
-   which can be quite confusing."
-  ;; to keyword :protocol (singular) and :port only seems to exist
-  ;; when :endpoint-override is used to set up the client
-  ;; Also, :protocol is a keyword while :protocols contain a vector of strings
-  ;; On top there seems to be a region on both the client (root) and inside endpoint
-  [{:keys [hostname protocols protocol region port] :as _endpoint}]
-  (str (or (when protocol (name protocol))
-           (-> protocols sort last)) ; sort to prefer https
-       "://" (if (= "s3.amazonaws.com" hostname)
-               (str/replace hostname #"^s3\." (str "s3." region "."))
-               (str hostname (when port (str ":" port))))
-       "/"))
+(defn ^:no-doc endpoint-components
+  "Returns `{:protocol :host :port}` from either a URL string
+   (e.g. \"http://localhost:9000\") or a Cognitect-style endpoint map."
+  ;; In the Cognitect-style map, :protocol (singular) and :port only seem to
+  ;; appear when :endpoint-override is used to set up the client. :protocol is
+  ;; a keyword while :protocols is a vector of strings. Region appears both at
+  ;; the client root and inside the endpoint.
+  [endpoint]
+  (if (string? endpoint)
+    (let [u (URL. endpoint)]
+      {:protocol (.getProtocol u)
+       :host     (.getHost u)
+       :port     (.getPort u)})
+    (let [{:keys [hostname protocols protocol region port]} endpoint]
+      {:protocol (or (when protocol (name protocol))
+                     (-> protocols sort last)) ; sort to prefer https
+       :host     (if (= "s3.amazonaws.com" hostname)
+                   (str/replace hostname #"^s3\." (str "s3." region "."))
+                   hostname)
+       :port     port})))
 
 (defn generate-presigned-url
   "Takes client, bucket name, object key and an options map
@@ -327,10 +358,15 @@
    see that function for more relevant options.
    Returns a presigned URL."
   [client bucket object-key {:keys [endpoint path-style region] :as opts}]
-  (let [endpoint-str (or endpoint
-                         (construct-endpoint-str (:endpoint client)))
-        url (-> (if path-style
-                  (str endpoint-str bucket "/")
-                  (str/replace endpoint-str #"://" (str "://" bucket ".")))
-                (str object-key))]
-    (presign (:credentials client) url (assoc opts :region (or region (:region client))))))
+  (let [{:keys [protocol host port]} (endpoint-components
+                                      (or endpoint (:endpoint client)))
+        canonical-uri (uri-encode url-unreserved-chars
+                                  (if path-style
+                                    (str "/" bucket "/" object-key)
+                                    (str "/" object-key)))]
+    (presign* (:credentials client)
+              {:protocol      protocol
+               :host          (host-with-port (if path-style host (str bucket "." host))
+                                              port)
+               :canonical-uri canonical-uri}
+              (assoc opts :region (or region (:region client))))))
