@@ -207,6 +207,13 @@
                   [k v])))
          (into (sorted-map)))))
 
+(defn ^:no-doc host-with-port
+  "Returns host string and appends port when it is non-default."
+  [^URL url-obj]
+  (let [port (.getPort url-obj)]
+    (cond-> (.getHost url-obj)
+      (pos? port) (str ":" port))))
+
 (defn sign-request
   "Takes a client and a Ring style request map.
    Returns an enriched Ring style map with the required headers
@@ -219,16 +226,13 @@
      :as _opts}]
    (let [credentials (:credentials client)
          url-obj (URL. url)
-         port (.getPort url-obj)
-         host (cond-> (.getHost url-obj)
-                (pos? port) (str ":" port))
          timestamp (.format formatter (.toInstant ^Date ref-time))
          scope (str (subs timestamp 0 8) "/" region "/" service "/aws4_request")
          content-sha256 (or payload-hash
                             (when (string? body) ; protect against consuming InputStreams which can only be consumed once.
                               (hash-input body)))
          signed-headers (-> headers
-                            (assoc "Host" host
+                            (assoc "Host" (host-with-port url-obj)
                                    "x-amz-content-sha256" (or content-sha256 "UNSIGNED-PAYLOAD")
                                    "x-amz-date" timestamp
                                    "x-amz-security-token" (:aws/session-token credentials)))
@@ -267,9 +271,7 @@
   ([credentials url {:keys [ref-time region expires method override-response-headers]
                      :or {ref-time (Date.) region "us-east-1" expires "3600" override-response-headers {}}}]
    (let [url-obj (URL. url)
-         port (.getPort url-obj)
-         host (cond-> (.getHost url-obj)
-                (pos? port) (str ":" port))
+         host (host-with-port url-obj)
          service "s3"
          timestamp (.format formatter (.toInstant ^Date ref-time))
          scope (str (subs timestamp 0 8) "/" region "/" service "/aws4_request")
