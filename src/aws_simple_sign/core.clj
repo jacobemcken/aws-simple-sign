@@ -175,7 +175,7 @@
                                    (map (fn [[k v]] [(str/lower-case k) v]))
                                    (into (sorted-map)))]
     (str (-> (or method :get) name str/upper-case) "\n"
-         (uri-encode url-unreserved-chars canonical-url) "\n"
+         canonical-url "\n"
          (->query-str query-params) "\n"
          (->headers-str sorted-signed-headers) "\n"
          (str/join ";" (map key sorted-signed-headers)) "\n"
@@ -254,8 +254,9 @@
                                       "Signature=" signature-str))))))
 
 (defn presign
-  "Take an URL for a S3 object and returns a string with a presigned URL
-   for that particular object.
+  "Take an encoded URL for a S3 object where characters like space (` `)
+   and hashmarks `#` are represented as `%20` and `%23`.
+   The function returns a string with a presigned URL for that particular object.
    Takes the following options (a map) as the last argument,
    the map value shows the default values:
 
@@ -334,5 +335,5 @@
         url (-> (if path-style
                   (str endpoint-str bucket "/")
                   (str/replace endpoint-str #"://" (str "://" bucket ".")))
-                (str object-key))]
+                (str (uri-encode url-unreserved-chars object-key)))]
     (presign (:credentials client) url (assoc opts :region (or region (:region client))))))
