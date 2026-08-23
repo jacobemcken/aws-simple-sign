@@ -101,3 +101,28 @@ e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
   (testing "UTF-8 encoding of special characters and spaces"
     (is (= "/test%20%C3%A6%C3%B8%C3%A5.txt"
            (sut/uri-encode sut/url-unreserved-chars "/test æøå.txt")))))
+
+(deftest as-url
+  (testing "virtual-host style: bucket prefixed to hostname"
+    (is (= "http://bucket.localhost:9000/my%20file.txt"
+           (sut/as-url "http://localhost:9000" "bucket" "my file.txt" false))))
+
+  (testing "path style: bucket as a path segment"
+    (is (= "http://localhost:9000/bucket/my%20file.txt"
+           (sut/as-url "http://localhost:9000" "bucket" "my file.txt" true))))
+
+  (testing "special characters in object key are escaped"
+    (is (= "http://bucket.localhost:9000/my%20file%20%23%C3%A6.txt"
+           (sut/as-url "http://localhost:9000" "bucket" "my file #æ.txt" false))))
+
+  (testing "slashes in object key are preserved (folder-style keys)"
+    (is (= "http://bucket.localhost:9000/folder/file.txt"
+           (sut/as-url "http://localhost:9000" "bucket" "folder/file.txt" false))))
+
+  (testing "works with https endpoints"
+    (is (= "https://bucket.s3.eu-west-1.amazonaws.com/file.txt"
+           (sut/as-url "https://s3.eu-west-1.amazonaws.com" "bucket" "file.txt" false))))
+
+  (testing "trailing slash on endpoint is optional"
+    (is (= (sut/as-url "http://localhost:9000" "bucket" "file.txt" false)
+           (sut/as-url "http://localhost:9000/" "bucket" "file.txt" false)))))

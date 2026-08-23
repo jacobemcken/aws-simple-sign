@@ -325,6 +325,16 @@
                (str/replace hostname #"^s3\." (str "s3." region "."))
                (str hostname (when port (str ":" port))))))
 
+(defn as-url
+  "Returns an encoded URL based on the `endpoint`, `bucket`, `object-key`
+   and the option `path-style?`."
+  [endpoint bucket object-key path-style?]
+  (let [url-prefix (ensure-trailing-slash endpoint)]
+    (-> (if path-style?
+          (str url-prefix bucket "/")
+          (str/replace url-prefix #"://" (str "://" bucket ".")))
+        (str (uri-encode url-unreserved-chars object-key)))))
+
 (defn generate-presigned-url
   "Takes client, bucket name, object key and an options map
    with the following default values:
@@ -336,11 +346,6 @@
    see that function for more relevant options.
    Returns a presigned URL."
   [client bucket object-key {:keys [endpoint path-style region] :as opts}]
-  (let [url-prefix (-> (or endpoint
-                           (construct-endpoint-str (:endpoint client)))
-                       (ensure-trailing-slash))
-        url (-> (if path-style
-                  (str url-prefix bucket "/")
-                  (str/replace url-prefix #"://" (str "://" bucket ".")))
-                (str (uri-encode url-unreserved-chars object-key)))]
-    (presign (:credentials client) url (assoc opts :region (or region (:region client))))))
+  (presign (:credentials client)
+           (as-url (or endpoint (construct-endpoint-str (:endpoint client))) bucket object-key path-style)
+           (assoc opts :region (or region (:region client)))))
