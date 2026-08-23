@@ -35,15 +35,15 @@
     s
     (str s "/")))
 
- (defmulti hash-sha256
-   "Takes input like String or InputStream and returns a SHA256 hash."
-   (fn [input]
-     (cond
-       (instance? java.io.InputStream input)
-       :input-stream
+(defmulti hash-sha256
+  "Takes input like String or InputStream and returns a SHA256 hash."
+  (fn [input]
+    (cond
+      (instance? java.io.InputStream input)
+      :input-stream
 
-       (= String (type input))
-       :string)))
+      (= String (type input))
+      :string)))
 
 (defmethod hash-sha256 :string
   [^String input]
