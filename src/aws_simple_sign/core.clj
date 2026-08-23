@@ -28,6 +28,13 @@
            (javax.crypto Mac)
            (javax.crypto.spec SecretKeySpec)))
 
+(defn ^:no-doc ensure-trailing-slash
+  "Returns `s` with a trailign slash if it doesn't already have one."
+  [s]
+  (if (str/ends-with? s "/")
+    s
+    (str s "/")))
+
  (defmulti hash-sha256
    "Takes input like String or InputStream and returns a SHA256 hash."
    (fn [input]
@@ -316,8 +323,7 @@
            (-> protocols sort last)) ; sort to prefer https
        "://" (if (= "s3.amazonaws.com" hostname)
                (str/replace hostname #"^s3\." (str "s3." region "."))
-               (str hostname (when port (str ":" port))))
-       "/"))
+               (str hostname (when port (str ":" port))))))
 
 (defn generate-presigned-url
   "Takes client, bucket name, object key and an options map
@@ -330,10 +336,11 @@
    see that function for more relevant options.
    Returns a presigned URL."
   [client bucket object-key {:keys [endpoint path-style region] :as opts}]
-  (let [endpoint-str (or endpoint
-                         (construct-endpoint-str (:endpoint client)))
+  (let [url-prefix (-> (or endpoint
+                           (construct-endpoint-str (:endpoint client)))
+                       (ensure-trailing-slash))
         url (-> (if path-style
-                  (str endpoint-str bucket "/")
-                  (str/replace endpoint-str #"://" (str "://" bucket ".")))
+                  (str url-prefix bucket "/")
+                  (str/replace url-prefix #"://" (str "://" bucket ".")))
                 (str (uri-encode url-unreserved-chars object-key)))]
     (presign (:credentials client) url (assoc opts :region (or region (:region client))))))
