@@ -1,5 +1,5 @@
 (ns aws-simple-sign.core-test
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [clojure.test :refer [are deftest is testing]]
             [aws-simple-sign.core :as sut])
   (:import (java.io ByteArrayInputStream)))
 
@@ -126,3 +126,20 @@ e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
   (testing "trailing slash on endpoint is optional"
     (is (= (sut/as-url "http://localhost:9000" "bucket" "file.txt" false)
            (sut/as-url "http://localhost:9000/" "bucket" "file.txt" false)))))
+
+(deftest sign-request-session-token
+  (are [header-exists? credentials]
+       (= header-exists?
+          (-> {:credentials credentials :region "us-east-1"}
+              (sut/sign-request {:url "https://example.com/"} {})
+              :headers
+              (contains? "x-amz-security-token")))
+
+    ;; Session Token omitted from header when not present
+    false credentials
+
+    ;; Session Token omitted from header when empty
+    false (assoc credentials :aws/session-token "")
+
+    ;; Session Token included in header when present
+    true (assoc credentials :aws/session-token "FwoG...")))

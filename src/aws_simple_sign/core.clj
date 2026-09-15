@@ -238,11 +238,13 @@
          content-sha256 (or payload-hash
                             (when (string? body) ; protect against consuming InputStreams which can only be consumed once.
                               (hash-input body)))
+         session-token (some-> (:aws/session-token credentials) str/trim not-empty)
          signed-headers (-> headers
                             (assoc "Host" (host-with-port url-obj)
                                    "x-amz-content-sha256" (or content-sha256 "UNSIGNED-PAYLOAD")
-                                   "x-amz-date" timestamp
-                                   "x-amz-security-token" (:aws/session-token credentials)))
+                                   "x-amz-date" timestamp)
+                            ;; Omit security-token header when not present - like AWS SDK does.
+                            (cond-> session-token (assoc "x-amz-security-token" session-token)))
          signature-str (signature credentials
                                   (.getPath url-obj)
                                   {:scope scope
