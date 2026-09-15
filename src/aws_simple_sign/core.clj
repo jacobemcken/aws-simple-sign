@@ -48,7 +48,7 @@
 (defmethod hash-sha256 :string
   [^String input]
   (let [hash (MessageDigest/getInstance "SHA-256")]
-    (.update hash (.getBytes input))
+    (.update hash (.getBytes input "UTF-8"))
     (.digest hash)))
 
 (defmethod hash-sha256 :input-stream
@@ -129,7 +129,7 @@
 (defn ^:no-doc compute-signature
   [{:keys [credentials str-to-sign region service short-date]}]
   (-> (str "AWS4" (:aws/secret-access-key credentials))
-      (.getBytes)
+      (.getBytes "UTF-8")
       (hmac-sha-256 short-date)
       (hmac-sha-256 region)
       (hmac-sha-256 service)
